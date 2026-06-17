@@ -1,74 +1,65 @@
 import * as React from "react"
-import { ArrowRight, Briefcase, Building2, FileText, History, Mic, MicOff, Paperclip, Search, Settings2, Shield, Sparkles, Users, Wand as Wand2, Zap } from "lucide-react"
+import { TriangleAlert as AlertTriangle, ArrowRight, Building2, CircleCheck as CheckCircle2, ChevronDown, ChevronRight, FileText, Link2, Mail, Mic, MicOff, Paperclip, Sparkles, TrendingDown, Upload, Users, Wand as Wand2, Zap } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import {
-  Command,
-  CommandEmpty,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from "@/components/ui/command"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Label } from "@/components/ui/label"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type PromptMode = "Fast" | "Balanced" | "Deep"
 type DeliverableType = "account_brief" | "discovery_prep" | "value_hypotheses" | "executive_summary"
 type EnrichmentDepth = "light" | "standard" | "deep"
-type SectionKey =
-  | "company"
-  | "buyingContext"
-  | "stakeholders"
-  | "businessPain"
-  | "deliverable"
-  | "compliance"
-  | "researchFocus"
-  | "notes"
+type SourceTab = "notes" | "audio" | "crm"
+type EvidenceLevel = "strong" | "medium" | "weak" | "empty"
 
-type Stakeholders = {
-  economicBuyer: string
-  champion: string
-  evaluator: string
-  compliance: string
+type Stakeholder = {
+  name: string
+  title: string
+  role: "Champion" | "Decision Maker" | "Evaluator" | "Compliance" | "Unknown"
+  confidence: number
+  inferred: boolean
 }
 
-type ProspectSetupDraft = {
+type PainPoint = {
+  id: string
+  description: string
+  confidence: number
+  lever: string
+}
+
+type MissingMetric = {
+  key: string
+  label: string
+  placeholder: string
+  benchmark: number
+  benchmarkLabel: string
+  unit: string
+  value: string
+}
+
+type ExtractionResult = {
   companyName: string
-  companyDomain: string
+  domain: string
   industry: string
+  arr: number | null
+  arrInferred: boolean
+  closeDate: string
   buyingContext: string
-  whyNow: string
-  knownInitiative: string
-  stakeholders: Stakeholders
-  businessPain: string[]
-  currentFriction: string[]
-  desiredOutcomes: string[]
-  desiredOutputs: DeliverableType[]
-  compliance: {
-    regulatedIndustry: string
-    knownRequirements: string[]
-    securityReviewExpected: string
-  }
-  researchFocus: string[]
-  notes: string
+  painPoints: PainPoint[]
+  stakeholders: Stakeholder[]
+  evidenceScore: number
+  evidenceLevel: EvidenceLevel
+  missingMetrics: MissingMetric[]
 }
 
-type AttachmentItem = { id: string; name: string }
 type CreateSetupResult = { accountId: string } | void
 
 export type ProspectSetupPromptPayload = {
@@ -77,13 +68,8 @@ export type ProspectSetupPromptPayload = {
   industry?: string
   accountContext?: string
   buyingContext?: string
-  whyNow?: string
-  knownInitiative?: string
   businessPain?: string[]
-  currentFriction?: string[]
-  desiredOutcomes?: string[]
-  stakeholders?: Partial<Stakeholders>
-  sourceArtifacts?: AttachmentItem[]
+  stakeholders?: Record<string, string>
   outputType: DeliverableType
   desiredOutputs: DeliverableType[]
   mode: PromptMode
@@ -94,6 +80,7 @@ export type ProspectSetupPromptPayload = {
   complianceSensitive: boolean
   deepResearch: boolean
   freeformPrompt: string
+  evidenceScore: number
 }
 
 export type CompanyOption = {
@@ -104,585 +91,251 @@ export type CompanyOption = {
   accountId?: string
 }
 
-type ActivityItem = { id: string; title: string; updatedAt: string; prompt: string }
-type AttachResult = void | null | AttachmentItem | AttachmentItem[]
-
 export type ProspectPromptBuilderProps = {
   className?: string
   initialValue?: string
   initialCompany?: CompanyOption
   companyOptions?: CompanyOption[]
-  recentActivities?: ActivityItem[]
+  recentActivities?: { id: string; title: string; updatedAt: string; prompt: string }[]
   onCreateSetup?: (payload: ProspectSetupPromptPayload) => CreateSetupResult | Promise<CreateSetupResult>
-  onAttachContent?: () => AttachResult | Promise<AttachResult>
+  onAttachContent?: () => void | Promise<void>
   onOpenVoiceInput?: () => void
   onNavigateToWorkspace?: (path: string, accountId: string) => void
 }
 
-type BuilderState = {
-  draft: ProspectSetupDraft
-  promptText: string
-  visibleSections: Record<SectionKey, boolean>
-  mode: PromptMode
-  primaryDeliverable: DeliverableType
-  enrichmentDepth: EnrichmentDepth
-  useUploadedFiles: boolean
-  usePriorAccountContext: boolean
-  runWebEnrichment: boolean
-  complianceSensitive: boolean
-  attachments: AttachmentItem[]
-  selectedCompany?: CompanyOption
-  isSubmitting: boolean
-  isRecording: boolean
-  searchOpen: boolean
-  statusMessage: string
-  successMessage: string
-  errorMessage: string
-}
+// ─── Extraction Engine ────────────────────────────────────────────────────────
 
-type ParsedPrompt = { draft: ProspectSetupDraft; visibleSections: Record<SectionKey, boolean> }
-
-type BuilderAction =
-  | { type: "APPLY_PROMPT_TEXT"; promptText: string }
-  | { type: "SELECT_COMPANY"; company: CompanyOption }
-  | { type: "SYNC_SELECTED_COMPANY"; company?: CompanyOption }
-  | { type: "ENABLE_SECTION"; section: SectionKey }
-  | { type: "SET_MODE"; mode: PromptMode }
-  | { type: "SET_PRIMARY_DELIVERABLE"; deliverable: DeliverableType }
-  | { type: "SET_ENRICHMENT_DEPTH"; enrichmentDepth: EnrichmentDepth }
-  | { type: "SET_FLAG"; key: "useUploadedFiles" | "usePriorAccountContext" | "runWebEnrichment" | "complianceSensitive"; value: boolean }
-  | { type: "SET_SEARCH_OPEN"; open: boolean }
-  | { type: "SET_RECORDING"; value: boolean }
-  | { type: "ATTACHMENTS_ADDED"; attachments: AttachmentItem[]; statusMessage?: string }
-  | { type: "STRENGTHEN_PROMPT" }
-  | { type: "ENABLE_DEEP_RESEARCH" }
-  | { type: "RESTORE_ACTIVITY"; activity: ActivityItem }
-  | { type: "START_SUBMIT" }
-  | { type: "SUBMIT_SUCCESS"; message: string }
-  | { type: "SUBMIT_ERROR"; message: string }
-  | { type: "CLEAR_MESSAGES" }
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const DEFAULT_COMPANIES: CompanyOption[] = [
-  { id: "1", name: "Medtronic", domain: "medtronic.com", industry: "Medical Devices" },
-  { id: "2", name: "Stryker", domain: "stryker.com", industry: "Medical Devices" },
-  { id: "3", name: "Baxter", domain: "baxter.com", industry: "Healthcare" },
-  { id: "4", name: "Johnson & Johnson MedTech", domain: "jnjmedtech.com", industry: "Medical Devices" },
-  { id: "5", name: "Finastra", domain: "finastra.com", industry: "Financial Services Technology" },
+const PAIN_KEYWORDS: { pattern: RegExp; lever: string; label: string }[] = [
+  { pattern: /manual.*(routing|process|work|task)|hours?.*(routing|triag|process)|slow.*(routing|triag)/i, lever: "Labor Cost Avoidance", label: "Manual routing overhead consuming rep time" },
+  { pattern: /SLA.*(breach|miss|fail|violat)|miss.*SLA|SLA.*(issue|problem)/i, lever: "Brand Risk Mitigation", label: "SLA breach risk threatening service quality" },
+  { pattern: /churn.*(up|increas|risk)|customer.*(leav|los|cancel)/i, lever: "Revenue Protection (Churn)", label: "Customer churn tied to resolution speed" },
+  { pattern: /onboard.*(slow|long|week|month)|ramp.*(slow|long|time)/i, lever: "Productivity Acceleration", label: "Rep onboarding velocity below benchmark" },
+  { pattern: /messag.*(inconsist|vary|different)|inconsist.*messag/i, lever: "Brand Risk Mitigation", label: "Inconsistent messaging across field teams" },
+  { pattern: /version.*(confus|control|issue)|fragmented.*(content|system)/i, lever: "Labor Cost Avoidance", label: "Content fragmentation causing version confusion" },
+  { pattern: /coach.*(vary|inconsist|quality)|manager.*coach/i, lever: "Productivity Acceleration", label: "Coaching quality inconsistency across managers" },
+  { pattern: /compli.*(risk|issue|audit)|regulat.*(burden|require)/i, lever: "Compliance Risk Reduction", label: "Compliance and regulatory exposure" },
+  { pattern: /overhead|cost.*(\$\d+|\d+k|\d+ million)|spend.*(\$\d+|\d+k)/i, lever: "Cost Reduction", label: "Direct cost overhead identified" },
 ]
 
-const DEFAULT_ACTIVITIES: ActivityItem[] = [
-  {
-    id: "a1",
-    title: "Medtronic launch readiness setup",
-    updatedAt: "2h ago",
-    prompt:
-      "Company: Medtronic\nWebsite: medtronic.com\nIndustry: Medical Devices\n\nBuying context: New product launch readiness across distributed field teams\nWhy this account now: Need stronger rep ramp, compliant messaging, and executive discovery prep\nKnown initiative or trigger: Field launch enablement refresh\n\nStakeholders:\n- Economic buyer: VP Sales\n- Business champion: Sales Enablement Leader\n- Technical evaluator: RevOps / IT\n- Compliance / legal: Regulatory and legal operations\n\nKnown or suspected business pains:\n- Rep onboarding is slow for complex offerings\n- Messaging consistency is difficult across field teams\n- Launch content is fragmented across systems\n\nCurrent friction:\n- Multiple systems create version confusion\n- Coaching quality varies by manager\n\nDesired business outcome:\n- Faster rep ramp time\n- More consistent compliant messaging\n- Better launch readiness\n\nDesired output:\n- Account brief\n- Discovery prep\n- Value hypotheses\n\nCompliance sensitivity:\n- Regulated industry: yes\n- Known requirements: FDA-related controls; auditability\n- Security / legal review expected: yes",
-  },
-  {
-    id: "a2",
-    title: "Financial services coaching setup",
-    updatedAt: "Yesterday",
-    prompt:
-      "Company: Goldman Sachs\nWebsite: goldmansachs.com\nIndustry: Financial Services\n\nBuying context: Advisor enablement and coaching scale\nWhy this account now: Need consistent messaging and compliance-safe coaching motions\n\nDesired output:\n- Executive summary\n- Value hypotheses",
-  },
-]
-
-const MODE_OPTIONS: { value: PromptMode; description: string }[] = [
-  { value: "Fast", description: "Quick, high-level overview" },
-  { value: "Balanced", description: "Balanced depth and speed" },
-  { value: "Deep", description: "Comprehensive analysis" },
-]
-
-const DELIVERABLE_OPTIONS: { label: string; value: DeliverableType; icon: React.ReactNode }[] = [
-  { label: "Account brief", value: "account_brief", icon: <FileText className="h-3.5 w-3.5" /> },
-  { label: "Discovery prep", value: "discovery_prep", icon: <Search className="h-3.5 w-3.5" /> },
-  { label: "Value hypotheses", value: "value_hypotheses", icon: <Sparkles className="h-3.5 w-3.5" /> },
-  { label: "Executive summary", value: "executive_summary", icon: <Briefcase className="h-3.5 w-3.5" /> },
-]
-
-const ENRICHMENT_OPTIONS: { label: string; value: EnrichmentDepth }[] = [
-  { label: "Light", value: "light" },
-  { label: "Standard", value: "standard" },
-  { label: "Deep", value: "deep" },
-]
-
-const CORE_SECTIONS: SectionKey[] = ["company", "buyingContext", "stakeholders", "businessPain", "deliverable"]
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function createEmptyDraft(): ProspectSetupDraft {
-  return {
-    companyName: "",
-    companyDomain: "",
-    industry: "",
-    buyingContext: "",
-    whyNow: "",
-    knownInitiative: "",
-    stakeholders: { economicBuyer: "", champion: "", evaluator: "", compliance: "" },
-    businessPain: [],
-    currentFriction: [],
-    desiredOutcomes: [],
-    desiredOutputs: [],
-    compliance: { regulatedIndustry: "", knownRequirements: [], securityReviewExpected: "" },
-    researchFocus: [],
-    notes: "",
-  }
+const ROLE_KEYWORDS: Record<string, Stakeholder["role"]> = {
+  cfo: "Decision Maker", ceo: "Decision Maker", coo: "Decision Maker", cto: "Decision Maker",
+  vp: "Champion", "vice president": "Champion", director: "Champion", head: "Champion",
+  manager: "Champion", lead: "Champion",
+  it: "Evaluator", engineer: "Evaluator", architect: "Evaluator", analyst: "Evaluator", ops: "Evaluator",
+  legal: "Compliance", compliance: "Compliance", regulatory: "Compliance", counsel: "Compliance",
 }
 
-function createEmptyVisible(): Record<SectionKey, boolean> {
-  return { company: false, buyingContext: false, stakeholders: false, businessPain: false, deliverable: false, compliance: false, researchFocus: false, notes: false }
+function inferRole(title: string): Stakeholder["role"] {
+  const t = title.toLowerCase()
+  for (const [kw, role] of Object.entries(ROLE_KEYWORDS)) {
+    if (t.includes(kw)) return role
+  }
+  return "Unknown"
 }
 
-function hasContent(value: string | string[]) {
-  return Array.isArray(value) ? value.some((v) => v.trim().length > 0) : value.trim().length > 0
-}
-
-function dLabel(value: DeliverableType) {
-  return DELIVERABLE_OPTIONS.find((o) => o.value === value)?.label ?? value
-}
-
-function dValueFromLabel(label: string): DeliverableType | undefined {
-  const n = label.trim().toLowerCase()
-  return DELIVERABLE_OPTIONS.find((o) => o.label.toLowerCase() === n)?.value
-}
-
-function bulletSection(title: string, items: string[], placeholder = "") {
-  const filtered = items.filter((i) => i.trim())
-  const lines = filtered.length > 0 ? filtered.map((i) => `- ${i}`) : placeholder ? [`- ${placeholder}`] : ["-"]
-  return `${title}:\n${lines.join("\n")}`
-}
-
-function serializeDraft(draft: ProspectSetupDraft, vis: Record<SectionKey, boolean>, primary: DeliverableType) {
-  const parts: string[] = []
-  if (vis.company || hasContent(draft.companyName) || hasContent(draft.companyDomain) || hasContent(draft.industry)) {
-    parts.push([`Company: ${draft.companyName}`, `Website: ${draft.companyDomain}`, `Industry: ${draft.industry}`].join("\n"))
-  }
-  if (vis.buyingContext || hasContent(draft.buyingContext) || hasContent(draft.whyNow) || hasContent(draft.knownInitiative)) {
-    parts.push([`Buying context: ${draft.buyingContext}`, `Why this account now: ${draft.whyNow}`, `Known initiative or trigger: ${draft.knownInitiative}`].join("\n"))
-  }
-  if (vis.stakeholders || Object.values(draft.stakeholders).some((v) => v.trim())) {
-    parts.push(["Stakeholders:", `- Economic buyer: ${draft.stakeholders.economicBuyer}`, `- Business champion: ${draft.stakeholders.champion}`, `- Technical evaluator: ${draft.stakeholders.evaluator}`, `- Compliance / legal: ${draft.stakeholders.compliance}`].join("\n"))
-  }
-  if (vis.businessPain || hasContent(draft.businessPain) || hasContent(draft.currentFriction) || hasContent(draft.desiredOutcomes)) {
-    parts.push([bulletSection("Known or suspected business pains", draft.businessPain), bulletSection("Current friction", draft.currentFriction), bulletSection("Desired business outcome", draft.desiredOutcomes)].join("\n\n"))
-  }
-  const outputs = draft.desiredOutputs.length > 0 ? draft.desiredOutputs : vis.deliverable ? [primary] : []
-  if (vis.deliverable || outputs.length > 0) {
-    parts.push(bulletSection("Desired output", outputs.map(dLabel), dLabel(primary)))
-  }
-  if (vis.compliance || hasContent(draft.compliance.regulatedIndustry) || hasContent(draft.compliance.knownRequirements) || hasContent(draft.compliance.securityReviewExpected)) {
-    parts.push(["Compliance sensitivity:", `- Regulated industry: ${draft.compliance.regulatedIndustry}`, `- Known requirements: ${draft.compliance.knownRequirements.join("; ")}`, `- Security / legal review expected: ${draft.compliance.securityReviewExpected}`].join("\n"))
-  }
-  if (vis.researchFocus || hasContent(draft.researchFocus)) {
-    parts.push(bulletSection("Research focus", draft.researchFocus, "Company overview and current priorities"))
-  }
-  if (vis.notes || hasContent(draft.notes)) {
-    parts.push(`Additional notes:\n${draft.notes}`.trim())
-  }
-  return parts.join("\n\n").trim()
-}
-
-function parsePromptText(text: string): ParsedPrompt {
-  const draft = createEmptyDraft()
-  const vis = createEmptyVisible()
-  const lines = text.split(/\r?\n/)
-  const used = new Array(lines.length).fill(false)
-
-  const readLine = (label: string) => {
-    const lo = `${label.toLowerCase()}:`
-    const i = lines.findIndex((l) => l.trim().toLowerCase().startsWith(lo))
-    if (i === -1) return ""
-    used[i] = true
-    return lines[i].split(":").slice(1).join(":").trim()
-  }
-
-  const readBullets = (label: string) => {
-    const lo = `${label.toLowerCase()}:`
-    const si = lines.findIndex((l) => l.trim().toLowerCase() === lo)
-    if (si === -1) return [] as string[]
-    used[si] = true
-    const items: string[] = []
-    for (let i = si + 1; i < lines.length; i++) {
-      const t = lines[i].trim()
-      if (!t) { used[i] = true; if (items.length) break; continue }
-      if (!t.startsWith("-")) break
-      used[i] = true
-      const v = t.replace(/^-\s*/, "").trim()
-      if (v) items.push(v)
+function extractARR(text: string): { value: number | null; inferred: boolean } {
+  const patterns = [
+    /\$\s*(\d+(?:,\d{3})*(?:\.\d+)?)\s*(k|K|M|million)?\s*(?:ARR|ACV|annual|contract|deal|revenue)/i,
+    /(?:ARR|ACV|deal size|contract value)[^\d]*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?)\s*(k|K|M|million)?/i,
+    /(\d+(?:,\d{3})*(?:\.\d+)?)\s*(k|K|M|million)\s*(?:ARR|ACV|annual|deal)/i,
+  ]
+  for (const p of patterns) {
+    const m = text.match(p)
+    if (m) {
+      let val = parseFloat(m[1].replace(/,/g, ""))
+      const suffix = (m[2] || "").toLowerCase()
+      if (suffix === "k") val *= 1000
+      if (suffix === "m" || suffix === "million") val *= 1_000_000
+      return { value: val, inferred: false }
     }
-    return items
   }
-
-  draft.companyName = readLine("Company")
-  draft.companyDomain = readLine("Website")
-  draft.industry = readLine("Industry")
-  draft.buyingContext = readLine("Buying context")
-  draft.whyNow = readLine("Why this account now")
-  draft.knownInitiative = readLine("Known initiative or trigger")
-
-  if (draft.companyName || draft.companyDomain || draft.industry) vis.company = true
-  if (draft.buyingContext || draft.whyNow || draft.knownInitiative) vis.buyingContext = true
-
-  const stakeholderItems = readBullets("Stakeholders")
-  if (stakeholderItems.length || /(^|\n)Stakeholders:/i.test(text)) vis.stakeholders = true
-  for (const item of stakeholderItems) {
-    const [rk, ...rest] = item.split(":")
-    const val = rest.join(":").trim()
-    const k = rk.trim().toLowerCase()
-    if (k.includes("economic")) draft.stakeholders.economicBuyer = val
-    if (k.includes("champion")) draft.stakeholders.champion = val
-    if (k.includes("technical") || k.includes("evaluator")) draft.stakeholders.evaluator = val
-    if (k.includes("compliance") || k.includes("legal")) draft.stakeholders.compliance = val
+  const dollarMatch = text.match(/\$\s*(\d+(?:,\d{3})*(?:\.\d+)?)\s*(k|K|M|million)?/)
+  if (dollarMatch) {
+    let val = parseFloat(dollarMatch[1].replace(/,/g, ""))
+    const suffix = (dollarMatch[2] || "").toLowerCase()
+    if (suffix === "k") val *= 1000
+    if (suffix === "m" || suffix === "million") val *= 1_000_000
+    if (val > 1000) return { value: val, inferred: true }
   }
-
-  draft.businessPain = readBullets("Known or suspected business pains")
-  draft.currentFriction = readBullets("Current friction")
-  draft.desiredOutcomes = readBullets("Desired business outcome")
-  if (draft.businessPain.length || draft.currentFriction.length || draft.desiredOutcomes.length) vis.businessPain = true
-
-  const outputs = readBullets("Desired output")
-  if (outputs.length || /(^|\n)Desired output:/i.test(text)) vis.deliverable = true
-  draft.desiredOutputs = outputs.map(dValueFromLabel).filter((v): v is DeliverableType => Boolean(v))
-
-  const compItems = readBullets("Compliance sensitivity")
-  if (compItems.length || /(^|\n)Compliance sensitivity:/i.test(text)) vis.compliance = true
-  for (const item of compItems) {
-    const [rk, ...rest] = item.split(":")
-    const val = rest.join(":").trim()
-    const k = rk.trim().toLowerCase()
-    if (k.includes("regulated industry")) draft.compliance.regulatedIndustry = val
-    if (k.includes("known requirements")) draft.compliance.knownRequirements = val ? val.split(/[;,]/).map((p) => p.trim()).filter(Boolean) : []
-    if (k.includes("security") || k.includes("legal review")) draft.compliance.securityReviewExpected = val
-  }
-
-  draft.researchFocus = readBullets("Research focus")
-  if (draft.researchFocus.length || /(^|\n)Research focus:/i.test(text)) vis.researchFocus = true
-
-  const ni = lines.findIndex((l) => l.trim().toLowerCase() === "additional notes:")
-  if (ni !== -1) {
-    vis.notes = true
-    used[ni] = true
-    const noteLines: string[] = []
-    for (let i = ni + 1; i < lines.length; i++) { used[i] = true; noteLines.push(lines[i]) }
-    draft.notes = noteLines.join("\n").trim()
-  }
-  if (!draft.notes) {
-    const leftover = lines.filter((l, i) => !used[i] && l.trim())
-    if (leftover.length) { draft.notes = leftover.join("\n").trim(); vis.notes = true }
-  }
-
-  return { draft, visibleSections: vis }
+  return { value: null, inferred: false }
 }
 
-function flagLabel(key: "useUploadedFiles" | "usePriorAccountContext" | "runWebEnrichment" | "complianceSensitive") {
-  const map = { useUploadedFiles: "Uploaded files", usePriorAccountContext: "Prior account context", runWebEnrichment: "Web enrichment", complianceSensitive: "Compliance-sensitive mode" }
-  return map[key] ?? key
-}
+function extractStakeholders(text: string): Stakeholder[] {
+  const results: Stakeholder[] = []
+  const seen = new Set<string>()
 
-function sectionTitle(s: SectionKey) {
-  const map: Record<SectionKey, string> = { company: "Company", buyingContext: "Buying context", stakeholders: "Stakeholders", businessPain: "Business pain", deliverable: "Deliverable", compliance: "Compliance", researchFocus: "Research focus", notes: "Notes" }
-  return map[s] ?? s
-}
-
-function cap(v: string) { return v.charAt(0).toUpperCase() + v.slice(1) }
-
-// ─── Reducer ──────────────────────────────────────────────────────────────────
-
-function buildStrengthenedState(state: BuilderState): BuilderState {
-  const vis = { ...state.visibleSections }
-  for (const s of CORE_SECTIONS) vis[s] = true
-  const draft = state.draft.desiredOutputs.length === 0 ? { ...state.draft, desiredOutputs: [state.primaryDeliverable] } : state.draft
-  return { ...state, draft, visibleSections: vis, promptText: serializeDraft(draft, vis, state.primaryDeliverable), statusMessage: "Prompt strengthened with missing value case sections.", successMessage: "", errorMessage: "" }
-}
-
-function enableDeepResearchState(state: BuilderState): BuilderState {
-  const vis = { ...state.visibleSections, researchFocus: true }
-  const draft: ProspectSetupDraft = {
-    ...state.draft,
-    researchFocus: state.draft.researchFocus.length > 0 ? state.draft.researchFocus : ["Company overview and current priorities", "Likely stakeholders and buying committee", "Business pain signals", "Industry and compliance considerations", "Initial value hypotheses"],
+  // Pattern: "Name: Role" or "- Name: Role"
+  const bulletPattern = /[-•]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*):\s*([A-Za-z][A-Za-z\s\/]+)/g
+  let m
+  while ((m = bulletPattern.exec(text)) !== null) {
+    const name = m[1].trim()
+    const roleText = m[2].trim()
+    if (seen.has(name.toLowerCase())) continue
+    seen.add(name.toLowerCase())
+    results.push({ name, title: roleText, role: inferRole(roleText), confidence: 0.88, inferred: false })
   }
-  return { ...state, draft, visibleSections: vis, mode: "Deep", enrichmentDepth: "deep", promptText: serializeDraft(draft, vis, state.primaryDeliverable), statusMessage: "Deep research enabled. Research focus added to the analysis.", successMessage: "", errorMessage: "" }
+
+  // Pattern: "Name, Title" in flowing text
+  const titlePattern = /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?),?\s+(VP\s+of\s+\w+|Director\s+of\s+\w+|Chief\s+\w+\s+Officer|CFO|CTO|CEO|COO|Head\s+of\s+\w+)/g
+  while ((m = titlePattern.exec(text)) !== null) {
+    const name = m[1].trim()
+    const title = m[2].trim()
+    if (seen.has(name.toLowerCase())) continue
+    seen.add(name.toLowerCase())
+    results.push({ name, title, role: inferRole(title), confidence: 0.85, inferred: false })
+  }
+
+  return results.slice(0, 5)
 }
 
-function builderReducer(state: BuilderState, action: BuilderAction): BuilderState {
-  switch (action.type) {
-    case "APPLY_PROMPT_TEXT": {
-      const p = parsePromptText(action.promptText)
-      return { ...state, draft: p.draft, visibleSections: p.visibleSections, promptText: action.promptText, complianceSensitive: state.complianceSensitive || Boolean(p.visibleSections.compliance || p.draft.compliance.regulatedIndustry || p.draft.compliance.knownRequirements.length || p.draft.compliance.securityReviewExpected), successMessage: "", errorMessage: "" }
+function extractCompany(text: string): string {
+  const patterns = [
+    /^Company:\s*(.+)$/im,
+    /^Account:\s*(.+)$/im,
+    /^Prospect:\s*(.+)$/im,
+    /(?:with|for|at|client is)\s+([A-Z][a-zA-Z&\s]{2,30})(?:\s*[,.\n])/,
+  ]
+  for (const p of patterns) {
+    const m = text.match(p)
+    if (m?.[1]) return m[1].trim()
+  }
+  return ""
+}
+
+function extractDomain(text: string): string {
+  const m = text.match(/Website:\s*([\w.-]+\.[a-z]{2,})/i) || text.match(/([\w-]+\.(?:com|io|co|net|org))/i)
+  return m?.[1]?.trim() ?? ""
+}
+
+function extractIndustry(text: string): string {
+  const m = text.match(/Industry:\s*(.+)/i)
+  return m?.[1]?.trim() ?? ""
+}
+
+function extractBuyingContext(text: string): string {
+  const m = text.match(/Buying context:\s*(.+)/i) || text.match(/(?:context|initiative|trigger):\s*(.+)/i)
+  return m?.[1]?.trim() ?? ""
+}
+
+function runExtraction(text: string): ExtractionResult {
+  if (text.trim().length < 20) {
+    return {
+      companyName: "", domain: "", industry: "", arr: null, arrInferred: false,
+      closeDate: "", buyingContext: "", painPoints: [], stakeholders: [],
+      evidenceScore: 0, evidenceLevel: "empty",
+      missingMetrics: buildMissingMetrics([], {}),
     }
-    case "SELECT_COMPANY": {
-      const draft = { ...state.draft, companyName: action.company.name, companyDomain: action.company.domain ?? state.draft.companyDomain, industry: action.company.industry ?? state.draft.industry }
-      const vis = { ...state.visibleSections, company: true }
-      return { ...state, draft, visibleSections: vis, selectedCompany: action.company, searchOpen: false, promptText: serializeDraft(draft, vis, state.primaryDeliverable), statusMessage: `${action.company.name} added to the value case.`, successMessage: "", errorMessage: "" }
-    }
-    case "SYNC_SELECTED_COMPANY": return { ...state, selectedCompany: action.company }
-    case "ENABLE_SECTION": {
-      const vis = { ...state.visibleSections, [action.section]: true }
-      let draft = state.draft
-      if (action.section === "deliverable" && draft.desiredOutputs.length === 0) draft = { ...draft, desiredOutputs: [state.primaryDeliverable] }
-      return { ...state, draft, visibleSections: vis, promptText: serializeDraft(draft, vis, state.primaryDeliverable), statusMessage: `${sectionTitle(action.section)} added to the prompt.`, successMessage: "", errorMessage: "" }
-    }
-    case "SET_MODE": return { ...state, mode: action.mode, statusMessage: `${action.mode} analysis depth selected.`, successMessage: "", errorMessage: "" }
-    case "SET_PRIMARY_DELIVERABLE": {
-      const desiredOutputs = state.draft.desiredOutputs.includes(action.deliverable) ? state.draft.desiredOutputs : [action.deliverable, ...state.draft.desiredOutputs]
-      const draft = { ...state.draft, desiredOutputs }
-      const vis = { ...state.visibleSections, deliverable: true }
-      return { ...state, primaryDeliverable: action.deliverable, draft, visibleSections: vis, promptText: serializeDraft(draft, vis, action.deliverable), statusMessage: `${dLabel(action.deliverable)} selected as the primary output.`, successMessage: "", errorMessage: "" }
-    }
-    case "SET_ENRICHMENT_DEPTH": return { ...state, enrichmentDepth: action.enrichmentDepth, statusMessage: `${cap(action.enrichmentDepth)} enrichment depth selected.`, successMessage: "", errorMessage: "" }
-    case "SET_FLAG": return { ...state, [action.key]: action.value, statusMessage: `${flagLabel(action.key)} ${action.value ? "enabled" : "disabled"}.`, successMessage: "", errorMessage: "" }
-    case "SET_SEARCH_OPEN": return { ...state, searchOpen: action.open }
-    case "SET_RECORDING": return { ...state, isRecording: action.value, statusMessage: action.value ? "Voice input started." : "Voice input stopped.", successMessage: "", errorMessage: "" }
-    case "ATTACHMENTS_ADDED": return { ...state, attachments: [...state.attachments, ...action.attachments], statusMessage: action.statusMessage ?? `${action.attachments.length} attachment${action.attachments.length > 1 ? "s" : ""} added.`, successMessage: "", errorMessage: "" }
-    case "STRENGTHEN_PROMPT": return buildStrengthenedState(state)
-    case "ENABLE_DEEP_RESEARCH": return enableDeepResearchState(state)
-    case "RESTORE_ACTIVITY": {
-      const p = parsePromptText(action.activity.prompt)
-      return { ...state, draft: p.draft, visibleSections: p.visibleSections, promptText: action.activity.prompt, selectedCompany: undefined, statusMessage: `${action.activity.title} restored.`, successMessage: "", errorMessage: "" }
-    }
-    case "START_SUBMIT": return { ...state, isSubmitting: true, statusMessage: "Launching intelligence...", successMessage: "", errorMessage: "" }
-    case "SUBMIT_SUCCESS": return { ...state, isSubmitting: false, statusMessage: "", successMessage: action.message, errorMessage: "" }
-    case "SUBMIT_ERROR": return { ...state, isSubmitting: false, statusMessage: "", successMessage: "", errorMessage: action.message }
-    case "CLEAR_MESSAGES": return { ...state, statusMessage: "", successMessage: "", errorMessage: "" }
-    default: return state
   }
-}
 
-function getInitialState(initialValue: string, initialCompany?: CompanyOption): BuilderState {
-  const hasVal = initialValue.trim().length > 0
-  const parsed = hasVal ? parsePromptText(initialValue) : { draft: createEmptyDraft(), visibleSections: createEmptyVisible() }
-  const draft = initialCompany ? { ...parsed.draft, companyName: parsed.draft.companyName || initialCompany.name, companyDomain: parsed.draft.companyDomain || initialCompany.domain || "", industry: parsed.draft.industry || initialCompany.industry || "" } : parsed.draft
-  const vis = initialCompany ? { ...parsed.visibleSections, company: true } : parsed.visibleSections
-  const primary = draft.desiredOutputs[0] ?? "account_brief"
-  const promptText = hasVal ? initialValue.trim() : initialCompany ? serializeDraft(draft, vis, primary) : ""
-  return {
-    draft, promptText, visibleSections: vis, mode: "Balanced", primaryDeliverable: primary, enrichmentDepth: "standard",
-    useUploadedFiles: true, usePriorAccountContext: true, runWebEnrichment: true,
-    complianceSensitive: vis.compliance || Boolean(draft.compliance.regulatedIndustry || draft.compliance.knownRequirements.length || draft.compliance.securityReviewExpected),
-    attachments: [], selectedCompany: initialCompany, isSubmitting: false, isRecording: false, searchOpen: false,
-    statusMessage: "", successMessage: "", errorMessage: "",
+  const companyName = extractCompany(text)
+  const domain = extractDomain(text)
+  const industry = extractIndustry(text)
+  const buyingContext = extractBuyingContext(text)
+  const { value: arr, inferred: arrInferred } = extractARR(text)
+  const stakeholders = extractStakeholders(text)
+
+  const painPoints: PainPoint[] = []
+  for (let i = 0; i < PAIN_KEYWORDS.length; i++) {
+    const { pattern, lever, label } = PAIN_KEYWORDS[i]
+    if (pattern.test(text)) {
+      painPoints.push({ id: `pain_${i}`, description: label, confidence: 0.88 + Math.random() * 0.09, lever })
+    }
   }
+
+  let score = 0
+  if (companyName) score += 20
+  if (arr !== null) score += 15
+  if (stakeholders.length > 0) score += Math.min(stakeholders.length * 8, 20)
+  if (painPoints.length > 0) score += Math.min(painPoints.length * 8, 30)
+  if (industry) score += 8
+  if (buyingContext) score += 7
+  score = Math.min(score, 100)
+
+  const evidenceLevel: EvidenceLevel =
+    score >= 80 ? "strong" : score >= 40 ? "medium" : score > 0 ? "weak" : "empty"
+
+  const missingMetrics = buildMissingMetrics(painPoints, { arr })
+
+  return { companyName, domain, industry, arr, arrInferred, closeDate: "", buyingContext, painPoints, stakeholders, evidenceScore: score, evidenceLevel, missingMetrics }
 }
 
-function buildPayload(state: BuilderState): ProspectSetupPromptPayload {
-  const accountContext = [state.draft.buyingContext, state.draft.whyNow].filter(Boolean).join(" | ") || undefined
-  const stakeholders = Object.fromEntries(Object.entries(state.draft.stakeholders).filter(([, v]) => v.trim())) as Partial<Stakeholders>
-  return {
-    companyName: state.draft.companyName || undefined,
-    companyDomain: state.draft.companyDomain || undefined,
-    industry: state.draft.industry || undefined,
-    accountContext,
-    buyingContext: state.draft.buyingContext || undefined,
-    whyNow: state.draft.whyNow || undefined,
-    knownInitiative: state.draft.knownInitiative || undefined,
-    businessPain: state.draft.businessPain,
-    currentFriction: state.draft.currentFriction,
-    desiredOutcomes: state.draft.desiredOutcomes,
-    stakeholders: Object.keys(stakeholders).length > 0 ? stakeholders : undefined,
-    sourceArtifacts: state.attachments,
-    outputType: state.primaryDeliverable,
-    desiredOutputs: state.draft.desiredOutputs.length > 0 ? state.draft.desiredOutputs : [state.primaryDeliverable],
-    mode: state.mode,
-    enrichmentDepth: state.enrichmentDepth,
-    useUploadedFiles: state.useUploadedFiles,
-    usePriorAccountContext: state.usePriorAccountContext,
-    runWebEnrichment: state.runWebEnrichment,
-    complianceSensitive: state.complianceSensitive,
-    deepResearch: state.mode === "Deep" || state.enrichmentDepth === "deep",
-    freeformPrompt: state.promptText.trim(),
+function buildMissingMetrics(painPoints: PainPoint[], found: { arr?: number | null }): MissingMetric[] {
+  const metrics: MissingMetric[] = []
+  const hasLaborLever = painPoints.some((p) => p.lever === "Labor Cost Avoidance")
+  const hasChurnLever = painPoints.some((p) => p.lever.includes("Churn"))
+
+  if (hasLaborLever) {
+    metrics.push({ key: "monthly_ticket_volume", label: "Monthly support ticket volume", placeholder: "e.g. 12,500", benchmark: 10000, benchmarkLabel: "Industry avg: 10,000", unit: "tickets/mo", value: "" })
+    metrics.push({ key: "avg_rep_cost", label: "Avg. fully loaded cost per rep", placeholder: "e.g. 85,000", benchmark: 85000, benchmarkLabel: "US avg: $85,000", unit: "$/year", value: "" })
   }
-}
-
-function canSubmit(state: BuilderState) {
-  return state.promptText.trim().length > 12 || Boolean(state.draft.companyName || state.draft.companyDomain || state.attachments.length > 0)
-}
-
-function resolveAccountId(result: CreateSetupResult, company?: CompanyOption) {
-  if (result && typeof result === "object" && "accountId" in result && result.accountId) return result.accountId
-  return company?.accountId
+  if (hasChurnLever) {
+    metrics.push({ key: "annual_revenue", label: "Total annual recurring revenue", placeholder: "e.g. 2,400,000", benchmark: found.arr ? found.arr * 20 : 2400000, benchmarkLabel: "Estimated from deal size", unit: "$/year", value: "" })
+  }
+  if (!found.arr) {
+    metrics.push({ key: "deal_size", label: "Target deal size (ARR)", placeholder: "e.g. 120,000", benchmark: 0, benchmarkLabel: "", unit: "$/year", value: "" })
+  }
+  return metrics
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-const ToolbarIconButton = React.forwardRef<
-  HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean; activeClass?: string }
->(({ className, active, activeClass, children, ...props }, ref) => (
-  <button
-    ref={ref}
-    type="button"
-    className={cn(
-      "flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors",
-      "hover:bg-zinc-100 hover:text-zinc-700",
-      "dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-300",
-      active && activeClass,
-      className
-    )}
-    {...props}
-  >
-    {children}
-  </button>
-))
-ToolbarIconButton.displayName = "ToolbarIconButton"
-
-const SettingsSwitch = React.memo(function SettingsSwitch({ id, label, checked, onCheckedChange }: { id: string; label: string; checked: boolean; onCheckedChange: (v: boolean) => void }) {
+function EvidencePill({ level, score }: { level: EvidenceLevel; score: number }) {
+  if (level === "empty") return null
+  const cfg = {
+    strong: { bg: "bg-emerald-50 border-emerald-200 text-emerald-700", dot: "bg-emerald-500", label: "Strong" },
+    medium: { bg: "bg-amber-50 border-amber-200 text-amber-700", dot: "bg-amber-400", label: "Medium" },
+    weak: { bg: "bg-red-50 border-red-200 text-red-600", dot: "bg-red-400", label: "Weak" },
+    empty: { bg: "", dot: "", label: "" },
+  }[level]
   return (
-    <div className="flex items-center justify-between gap-3 py-0.5">
-      <Label htmlFor={id} className="cursor-pointer select-none text-sm font-normal text-zinc-600 dark:text-zinc-400">{label}</Label>
-      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
+    <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold", cfg.bg)}>
+      <span className={cn("h-1.5 w-1.5 rounded-full", cfg.dot)} />
+      {cfg.label} Evidence · {score}%
+    </span>
+  )
+}
+
+function ConfidenceDot({ value }: { value: number }) {
+  const color = value >= 0.9 ? "bg-emerald-400" : value >= 0.75 ? "bg-amber-400" : "bg-zinc-300"
+  return <span className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", color)} />
+}
+
+function InferredBadge() {
+  return <span className="ml-1.5 rounded-md border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">Inferred</span>
+}
+
+function SectionCard({ title, icon, children, defaultOpen = true }: { title: string; icon: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = React.useState(defaultOpen)
+  return (
+    <div className="rounded-xl border border-zinc-200/80 bg-white overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-zinc-50/80 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-zinc-400">{icon}</span>
+          <span className="text-[12px] font-semibold uppercase tracking-wide text-zinc-500">{title}</span>
+        </div>
+        {open ? <ChevronDown className="h-3.5 w-3.5 text-zinc-300" /> : <ChevronRight className="h-3.5 w-3.5 text-zinc-300" />}
+      </button>
+      {open && <div className="border-t border-zinc-100 px-4 pb-4 pt-3">{children}</div>}
     </div>
   )
-})
+}
 
-const PromptSettingsPopover = React.memo(function PromptSettingsPopover({ state, dispatch }: { state: BuilderState; dispatch: React.Dispatch<BuilderAction> }) {
+function EmptyExtractionState() {
   return (
-    <Popover>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <ToolbarIconButton aria-label="Analysis settings">
-              <Settings2 className="h-4 w-4" />
-            </ToolbarIconButton>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent>Analysis settings</TooltipContent>
-      </Tooltip>
-      <PopoverContent align="end" sideOffset={8} className="w-80 rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-900">
-        <div className="flex flex-col gap-5">
-          <div className="space-y-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">Deliverable</p>
-            <div className="grid grid-cols-2 gap-1.5">
-              {DELIVERABLE_OPTIONS.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  onClick={() => dispatch({ type: "SET_PRIMARY_DELIVERABLE", deliverable: o.value })}
-                  className={cn(
-                    "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-all",
-                    state.primaryDeliverable === o.value
-                      ? "border-zinc-300 bg-zinc-100 font-medium text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-                      : "border-zinc-200 text-zinc-500 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-800 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-200"
-                  )}
-                >
-                  <span className={cn(state.primaryDeliverable === o.value ? "text-zinc-500 dark:text-zinc-400" : "text-zinc-400 dark:text-zinc-500")}>{o.icon}</span>
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">Enrichment depth</p>
-            <div className="flex rounded-xl border border-zinc-200 bg-zinc-50 p-1 gap-1 dark:border-zinc-700 dark:bg-zinc-800/50">
-              {ENRICHMENT_OPTIONS.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  onClick={() => dispatch({ type: "SET_ENRICHMENT_DEPTH", enrichmentDepth: o.value })}
-                  className={cn(
-                    "flex-1 rounded-lg py-1.5 text-sm font-medium transition-all",
-                    state.enrichmentDepth === o.value
-                      ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-100"
-                      : "text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
-                  )}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-3">
-            <SettingsSwitch id="uploaded-files" label="Use uploaded files" checked={state.useUploadedFiles} onCheckedChange={(v) => dispatch({ type: "SET_FLAG", key: "useUploadedFiles", value: v })} />
-            <SettingsSwitch id="prior-context" label="Use prior account context" checked={state.usePriorAccountContext} onCheckedChange={(v) => dispatch({ type: "SET_FLAG", key: "usePriorAccountContext", value: v })} />
-            <SettingsSwitch id="web-enrichment" label="Run web enrichment" checked={state.runWebEnrichment} onCheckedChange={(v) => dispatch({ type: "SET_FLAG", key: "runWebEnrichment", value: v })} />
-            <SettingsSwitch id="compliance" label="Compliance-sensitive mode" checked={state.complianceSensitive} onCheckedChange={(v) => dispatch({ type: "SET_FLAG", key: "complianceSensitive", value: v })} />
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+    <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-100">
+        <Sparkles className="h-5 w-5 text-zinc-400" />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-zinc-500">Paste your notes to begin</p>
+        <p className="mt-1 text-xs text-zinc-400 max-w-[200px]">Fabric will extract entities and score your evidence quality in real time.</p>
+      </div>
+    </div>
   )
-})
-
-const RecentActivityMenu = React.memo(function RecentActivityMenu({ activities, onRestore }: { activities: ActivityItem[]; onRestore: (a: ActivityItem) => void }) {
-  return (
-    <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <ToolbarIconButton aria-label="Recent value cases">
-              <History className="h-4 w-4" />
-            </ToolbarIconButton>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>Recent value cases</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent align="end" sideOffset={8} className="w-80 rounded-2xl border border-zinc-200/80 bg-white p-1.5 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-900">
-        <DropdownMenuLabel className="px-3 py-2 text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
-          Recent value cases
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator className="mx-1 bg-zinc-100 dark:bg-zinc-800" />
-        {activities.map((a) => (
-          <DropdownMenuItem key={a.id} onClick={() => onRestore(a)} className="flex flex-col items-start gap-0.5 rounded-xl px-3 py-2.5 cursor-pointer">
-            <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{a.title}</span>
-            <span className="text-xs text-zinc-400 dark:text-zinc-500">{a.updatedAt}</span>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-})
-
-const CompanySearchPopover = React.memo(function CompanySearchPopover({ open, onOpenChange, companyOptions, onSelect }: { open: boolean; onOpenChange: (o: boolean) => void; companyOptions: CompanyOption[]; onSelect: (c: CompanyOption) => void }) {
-  return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <ToolbarIconButton aria-label="Search accounts">
-              <Search className="h-4 w-4" />
-            </ToolbarIconButton>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent>Search accounts</TooltipContent>
-      </Tooltip>
-      <PopoverContent align="start" side="top" sideOffset={8} className="w-72 rounded-2xl border border-zinc-200/80 bg-white p-0 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-900">
-        <Command className="rounded-2xl bg-transparent">
-          <CommandInput placeholder="Search accounts..." className="h-10 rounded-t-2xl border-0 bg-transparent" />
-          <CommandList className="max-h-56">
-            <CommandEmpty className="py-4 text-center text-sm text-zinc-400 dark:text-zinc-500">No accounts found.</CommandEmpty>
-            <CommandSeparator className="bg-zinc-100 dark:bg-zinc-800" />
-            {companyOptions.map((c) => (
-              <CommandItem key={c.id} value={c.name} onSelect={() => onSelect(c)} className="flex flex-col items-start gap-0.5 rounded-xl px-3 py-2.5 cursor-pointer">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">{c.name}</span>
-                {c.industry && <span className="text-xs text-zinc-400 dark:text-zinc-500">{c.industry}</span>}
-              </CommandItem>
-            ))}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  )
-})
-
-const SectionIcon = ({ section }: { section: SectionKey }) => {
-  const cls = "h-3 w-3"
-  switch (section) {
-    case "company": return <Building2 className={cls} />
-    case "buyingContext": return <Briefcase className={cls} />
-    case "stakeholders": return <Users className={cls} />
-    case "businessPain": return <FileText className={cls} />
-    case "deliverable": return <Sparkles className={cls} />
-    case "compliance": return <Shield className={cls} />
-    case "researchFocus": return <Search className={cls} />
-    case "notes": return <FileText className={cls} />
-  }
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
@@ -690,267 +343,544 @@ const SectionIcon = ({ section }: { section: SectionKey }) => {
 export function ProspectPromptBuilder({
   className,
   initialValue = "",
-  initialCompany,
-  companyOptions = DEFAULT_COMPANIES,
-  recentActivities = DEFAULT_ACTIVITIES,
+  companyOptions: _companyOptions = [] as CompanyOption[],
   onCreateSetup,
-  onAttachContent,
-  onOpenVoiceInput,
   onNavigateToWorkspace,
 }: ProspectPromptBuilderProps) {
-  const [state, dispatch] = React.useReducer(builderReducer, undefined, () => getInitialState(initialValue, initialCompany))
+  const [sourceTab, setSourceTab] = React.useState<SourceTab>("notes")
+  const [rawInput, setRawInput] = React.useState(initialValue)
+  const [crmUrl, setCrmUrl] = React.useState("")
+  const [isRecording, setIsRecording] = React.useState(false)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [metricValues, setMetricValues] = React.useState<Record<string, string>>({})
+  const [strengthened, setStrengthened] = React.useState(false)
+  const [showEmailDraft, setShowEmailDraft] = React.useState(false)
+  const [mode, setMode] = React.useState<PromptMode>("Balanced")
+  const [complianceSensitive, setComplianceSensitive] = React.useState(false)
+  const [runWebEnrichment, setRunWebEnrichment] = React.useState(true)
+  const [settingsOpen, setSettingsOpen] = React.useState(false)
 
-  React.useEffect(() => {
-    if (!state.draft.companyName) {
-      if (state.selectedCompany) dispatch({ type: "SYNC_SELECTED_COMPANY", company: undefined })
-      return
-    }
-    const matched = companyOptions.find((c) => c.name.toLowerCase() === state.draft.companyName.toLowerCase())
-    if (matched?.id !== state.selectedCompany?.id) dispatch({ type: "SYNC_SELECTED_COMPANY", company: matched })
-  }, [state.draft.companyName, companyOptions, state.selectedCompany])
+  const extraction = React.useMemo(() => runExtraction(rawInput), [rawInput])
 
-  React.useEffect(() => {
-    if (!state.statusMessage) return
-    const t = setTimeout(() => dispatch({ type: "CLEAR_MESSAGES" }), 4000)
-    return () => clearTimeout(t)
-  }, [state.statusMessage])
+  const handleStrengthen = () => {
+    const benchmarkLines: string[] = []
+    extraction.missingMetrics.forEach((m) => {
+      if (m.benchmark > 0 && !metricValues[m.key]) {
+        setMetricValues((prev) => ({ ...prev, [m.key]: String(m.benchmark) }))
+        benchmarkLines.push(`- ${m.label}: ${m.benchmark.toLocaleString()} ${m.unit} (benchmark applied)`)
+      }
+    })
+    setStrengthened(true)
+  }
 
-  const handleSubmit = React.useCallback(async () => {
-    if (!canSubmit(state) || state.isSubmitting) return
-    dispatch({ type: "START_SUBMIT" })
+  const canLaunch = extraction.evidenceScore > 0 || rawInput.trim().length > 20
+
+  const handleLaunch = async () => {
+    if (!canLaunch || isSubmitting) return
+    setIsSubmitting(true)
     try {
-      const payload = buildPayload(state)
+      const payload: ProspectSetupPromptPayload = {
+        companyName: extraction.companyName || undefined,
+        companyDomain: extraction.domain || undefined,
+        industry: extraction.industry || undefined,
+        buyingContext: extraction.buyingContext || undefined,
+        businessPain: extraction.painPoints.map((p) => p.description),
+        stakeholders: Object.fromEntries(extraction.stakeholders.map((s) => [s.role, `${s.name} (${s.title})`])),
+        outputType: "account_brief",
+        desiredOutputs: ["account_brief", "discovery_prep"],
+        mode,
+        enrichmentDepth: mode === "Deep" ? "deep" : mode === "Fast" ? "light" : "standard",
+        useUploadedFiles: true,
+        usePriorAccountContext: true,
+        runWebEnrichment,
+        complianceSensitive,
+        deepResearch: mode === "Deep",
+        freeformPrompt: rawInput.trim(),
+        evidenceScore: extraction.evidenceScore,
+      }
       const result = onCreateSetup ? await onCreateSetup(payload) : undefined
-      dispatch({ type: "SUBMIT_SUCCESS", message: "Intelligence launched successfully." })
-      const accountId = resolveAccountId(result, state.selectedCompany)
-      if (accountId && onNavigateToWorkspace) onNavigateToWorkspace("/workspace", accountId)
-    } catch (err) {
-      dispatch({ type: "SUBMIT_ERROR", message: err instanceof Error ? err.message : "Something went wrong. Please try again." })
+      if (result && typeof result === "object" && "accountId" in result && onNavigateToWorkspace) {
+        onNavigateToWorkspace("/workspace", result.accountId)
+      }
+    } finally {
+      setIsSubmitting(false)
     }
-  }, [state, onCreateSetup, onNavigateToWorkspace])
-
-  const handleAttach = async () => {
-    const result = onAttachContent ? await onAttachContent() : null
-    const items: AttachmentItem[] = result
-      ? Array.isArray(result) ? result : [result]
-      : [{ id: `attachment-${state.attachments.length + 1}`, name: `Attachment ${state.attachments.length + 1}` }]
-    dispatch({ type: "ATTACHMENTS_ADDED", attachments: items })
   }
 
-  const handleVoice = () => {
-    onOpenVoiceInput?.()
-    dispatch({ type: "SET_RECORDING", value: !state.isRecording })
-  }
+  const wordCount = rawInput.trim() ? rawInput.trim().split(/\s+/).length : 0
 
-  const hiddenSections = (Object.keys(state.visibleSections) as SectionKey[]).filter((k) => !state.visibleSections[k])
-  const hasStatus = Boolean(state.statusMessage || state.successMessage || state.errorMessage)
-  const statusTone = state.errorMessage ? "error" : state.successMessage ? "success" : "info"
-  const statusMsg = state.errorMessage || state.successMessage || state.statusMessage
+  const emailDraft = extraction.companyName
+    ? `Subject: Quick question on ${extraction.companyName} metrics for our business case\n\nHi ${extraction.stakeholders.find((s) => s.role === "Champion")?.name || "there"},\n\nI'm building the initial ROI model for ${extraction.companyName} and want to make sure our financial projections are accurate.\n\nCould you help confirm these baseline figures?\n\n${extraction.missingMetrics.map((m) => `- ${m.label}: (benchmark: ${m.benchmark.toLocaleString()} ${m.unit})`).join("\n")}\n\nLet me know if those benchmarks are in the right ballpark or if you have specific numbers.\n\nBest,`
+    : ""
+
+  const hasExtracted = extraction.evidenceScore > 0
 
   return (
-    <TooltipProvider delayDuration={250}>
-      <div className={cn(
-        "w-full overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-lg",
-        "dark:border-zinc-700/60 dark:bg-zinc-900",
-        className
-      )}>
+    <TooltipProvider delayDuration={200}>
+      <div className={cn("w-full overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-xl", className)}>
 
         {/* ── Header ── */}
-        <div className="flex items-center justify-between gap-3 border-b border-zinc-100 bg-zinc-50/80 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-800/40">
+        <div className="flex items-center justify-between gap-3 border-b border-zinc-100 bg-gradient-to-r from-zinc-50 to-white px-5 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-200/80 dark:bg-zinc-700">
-              <Wand2 className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-zinc-900 shadow-sm">
+              <Wand2 className="h-4 w-4 text-white" />
             </div>
             <div>
-              <p className="text-[13px] font-semibold leading-tight text-zinc-800 dark:text-zinc-200">New Value Case</p>
-              <p className="text-[11px] leading-tight text-zinc-400 dark:text-zinc-500">Prospect intelligence builder</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-bold tracking-tight text-zinc-900">Value Case Intake</p>
+                {hasExtracted && <EvidencePill level={extraction.evidenceLevel} score={extraction.evidenceScore} />}
+              </div>
+              <p className="text-[11px] text-zinc-400">Fabric ingestion engine · paste unstructured notes to begin</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Mode segmented control */}
-            <div className="flex items-center gap-0.5 rounded-xl border border-zinc-200 bg-white p-0.5 dark:border-zinc-700 dark:bg-zinc-900">
-              {MODE_OPTIONS.map((o) => (
-                <Tooltip key={o.value}>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => dispatch({ type: "SET_MODE", mode: o.value })}
-                      className={cn(
-                        "rounded-lg px-3 py-1 text-xs font-medium transition-all",
-                        state.mode === o.value
-                          ? "bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900"
-                          : "text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
-                      )}
-                    >
-                      {o.value}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>{o.description}</TooltipContent>
-                </Tooltip>
+            {/* Mode selector */}
+            <div className="flex items-center rounded-xl border border-zinc-200 bg-white p-0.5">
+              {(["Fast", "Balanced", "Deep"] as PromptMode[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
+                    mode === m ? "bg-zinc-900 text-white shadow-sm" : "text-zinc-400 hover:text-zinc-700"
+                  )}
+                >{m}</button>
               ))}
             </div>
 
-            <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-700" />
-            <PromptSettingsPopover state={state} dispatch={dispatch} />
-            <RecentActivityMenu activities={recentActivities} onRestore={(a) => dispatch({ type: "RESTORE_ACTIVITY", activity: a })} />
+            {/* Settings popover */}
+            <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
+                    <button type="button" className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 transition-colors">
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
+                    </button>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Intake settings</TooltipContent>
+              </Tooltip>
+              <PopoverContent align="end" sideOffset={8} className="w-72 rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl">
+                <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-zinc-400">Analysis settings</p>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="web-enrich" className="text-sm font-normal text-zinc-600">Run web enrichment</Label>
+                    <Switch id="web-enrich" checked={runWebEnrichment} onCheckedChange={setRunWebEnrichment} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="compliance" className="text-sm font-normal text-zinc-600">Compliance-sensitive mode</Label>
+                    <Switch id="compliance" checked={complianceSensitive} onCheckedChange={setComplianceSensitive} />
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
-        {/* ── Company band ── */}
-        {state.selectedCompany && (
-          <div className="flex items-center gap-2.5 border-b border-blue-100 bg-blue-50/60 px-4 py-2.5 dark:border-blue-900/30 dark:bg-blue-950/20">
-            <Building2 className="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
-            <span className="text-sm font-semibold text-blue-800 dark:text-blue-300">{state.selectedCompany.name}</span>
-            {state.selectedCompany.industry && (
-              <span className="text-sm text-blue-500/80 dark:text-blue-400/60">· {state.selectedCompany.industry}</span>
-            )}
-            {state.selectedCompany.domain && (
-              <span className="ml-auto text-xs text-blue-400/70 dark:text-blue-500/60">{state.selectedCompany.domain}</span>
-            )}
-          </div>
-        )}
+        {/* ── Body: Two-column ── */}
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_380px] divide-y md:divide-y-0 md:divide-x divide-zinc-100">
 
-        {/* ── Textarea ── */}
-        <div className="px-4 pt-4 pb-2">
-          <Textarea
-            value={state.promptText}
-            onChange={(e) => dispatch({ type: "APPLY_PROMPT_TEXT", promptText: e.target.value })}
-            placeholder="Describe the account, buying context, pain points, and desired outcome — or use the controls below to build your value case..."
-            className="min-h-[176px] w-full resize-none border-0 bg-transparent p-0 text-sm leading-relaxed text-zinc-800 placeholder:text-zinc-300 focus-visible:ring-0 focus-visible:ring-offset-0 dark:text-zinc-200 dark:placeholder:text-zinc-600"
-            aria-label="Prompt input"
-          />
-        </div>
-
-        {/* ── Attachments ── */}
-        {state.attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-4 pb-3">
-            {state.attachments.map((a) => (
-              <span key={a.id} className="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
-                <Paperclip className="h-3 w-3 text-zinc-400" />
-                {a.name}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* ── Context chips ── */}
-        {hiddenSections.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3">
-            <span className="text-[11px] font-medium text-zinc-300 dark:text-zinc-600 mr-0.5">Add context:</span>
-            {hiddenSections.map((section) => (
-              <button
-                key={section}
-                type="button"
-                onClick={() => dispatch({ type: "ENABLE_SECTION", section })}
-                className="flex items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 bg-transparent px-2.5 py-1 text-[12px] font-medium text-zinc-400 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-600 dark:border-zinc-700 dark:text-zinc-500 dark:hover:border-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
-              >
-                <SectionIcon section={section} />
-                {sectionTitle(section)}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* ── Status banner ── */}
-        {hasStatus && (
-          <div className={cn(
-            "mx-4 mb-3 rounded-xl px-3.5 py-2.5 text-sm",
-            statusTone === "error" && "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400",
-            statusTone === "success" && "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400",
-            statusTone === "info" && "bg-zinc-50 text-zinc-500 dark:bg-zinc-800/60 dark:text-zinc-400"
-          )}>
-            {statusMsg}
-          </div>
-        )}
-
-        {/* ── Footer toolbar ── */}
-        <div className="flex items-center justify-between gap-2 border-t border-zinc-100 bg-zinc-50/80 px-3 py-2.5 dark:border-zinc-800 dark:bg-zinc-800/40">
-
-          {/* Left: input actions */}
-          <div className="flex items-center gap-0.5">
-            <CompanySearchPopover
-              open={state.searchOpen}
-              onOpenChange={(o) => dispatch({ type: "SET_SEARCH_OPEN", open: o })}
-              companyOptions={companyOptions}
-              onSelect={(c) => dispatch({ type: "SELECT_COMPANY", company: c })}
-            />
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <ToolbarIconButton onClick={handleAttach} aria-label="Attach content">
-                  <Paperclip className="h-4 w-4" />
-                </ToolbarIconButton>
-              </TooltipTrigger>
-              <TooltipContent>Attach files or content</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <ToolbarIconButton
-                  onClick={handleVoice}
-                  active={state.isRecording}
-                  activeClass="bg-red-50 text-red-500 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-900/30"
-                  aria-label={state.isRecording ? "Stop recording" : "Start voice input"}
+          {/* ── Left: Source Input ── */}
+          <div className="flex flex-col">
+            {/* Source tabs */}
+            <div className="flex items-center gap-1 border-b border-zinc-100 bg-zinc-50/60 px-4 py-2">
+              {([
+                { id: "notes", label: "Notes & Text", icon: <FileText className="h-3.5 w-3.5" /> },
+                { id: "audio", label: "Call Audio", icon: <Mic className="h-3.5 w-3.5" /> },
+                { id: "crm", label: "CRM Link", icon: <Link2 className="h-3.5 w-3.5" /> },
+              ] as { id: SourceTab; label: string; icon: React.ReactNode }[]).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setSourceTab(tab.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
+                    sourceTab === tab.id
+                      ? "bg-white text-zinc-800 shadow-sm border border-zinc-200"
+                      : "text-zinc-400 hover:text-zinc-600"
+                  )}
                 >
-                  {state.isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                </ToolbarIconButton>
-              </TooltipTrigger>
-              <TooltipContent>{state.isRecording ? "Stop recording" : "Start voice input"}</TooltipContent>
-            </Tooltip>
+                  {tab.icon}{tab.label}
+                </button>
+              ))}
+            </div>
 
-            <div className="mx-1.5 h-4 w-px bg-zinc-200 dark:bg-zinc-700" />
+            {/* Notes tab */}
+            {sourceTab === "notes" && (
+              <div className="flex flex-1 flex-col">
+                <textarea
+                  value={rawInput}
+                  onChange={(e) => { setRawInput(e.target.value); setStrengthened(false) }}
+                  placeholder={"Paste raw discovery notes, call transcript, or any unstructured context here.\n\nFabric will automatically extract:\n- Account & deal details\n- Business pain points\n- Stakeholder names & roles\n- Value levers & ROI signals"}
+                  className="min-h-[300px] flex-1 resize-none bg-transparent px-5 py-4 text-sm leading-relaxed text-zinc-800 placeholder:text-zinc-300 focus:outline-none"
+                />
+                <div className="flex items-center justify-between border-t border-zinc-100 bg-zinc-50/40 px-4 py-2">
+                  <span className="text-[11px] text-zinc-400">{wordCount > 0 ? `${wordCount} words · Fabric is analyzing...` : "0 words"}</span>
+                  <div className="flex items-center gap-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => setIsRecording(!isRecording)}
+                          className={cn(
+                            "flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-700",
+                            isRecording && "bg-red-50 text-red-500 hover:bg-red-100"
+                          )}
+                        >
+                          {isRecording ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>Voice input</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button type="button" className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-700">
+                          <Paperclip className="h-3.5 w-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>Attach file</TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+              </div>
+            )}
 
+            {/* Audio tab */}
+            {sourceTab === "audio" && (
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-dashed border-zinc-300 bg-zinc-50">
+                  <Upload className="h-6 w-6 text-zinc-400" />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-medium text-zinc-600">Drop your call recording here</p>
+                  <p className="mt-1 text-xs text-zinc-400">Supports .mp3, .wav, .m4a · or paste a Gong / Otter.ai transcript</p>
+                </div>
+                <button type="button" className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 transition-colors">
+                  Browse files
+                </button>
+                <Separator className="w-full" />
+                <div className="w-full">
+                  <p className="mb-2 text-xs font-medium text-zinc-500">Or paste transcript directly:</p>
+                  <textarea
+                    value={rawInput}
+                    onChange={(e) => setRawInput(e.target.value)}
+                    placeholder="Paste Gong / Otter.ai transcript here..."
+                    className="min-h-[120px] w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* CRM tab */}
+            {sourceTab === "crm" && (
+              <div className="flex flex-1 flex-col gap-4 p-5">
+                <div>
+                  <p className="mb-1 text-xs font-medium text-zinc-500">Salesforce or HubSpot opportunity URL</p>
+                  <div className="flex gap-2">
+                    <input
+                      value={crmUrl}
+                      onChange={(e) => setCrmUrl(e.target.value)}
+                      placeholder="https://yourorg.salesforce.com/..."
+                      className="flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200"
+                    />
+                    <button type="button" className="rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 transition-colors">
+                      Fetch
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-zinc-400">Pulls Account Name, Owner, ARR, Stage, and Close Date via background API.</p>
+                </div>
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-center">
+                  <Link2 className="mx-auto mb-2 h-5 w-5 text-zinc-400" />
+                  <p className="text-xs text-zinc-500">Salesforce + HubSpot integration available in connected accounts.</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Right: Fabric Found ── */}
+          <div className="flex flex-col bg-zinc-50/40">
+            <div className="border-b border-zinc-100 px-4 py-2.5">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-zinc-400" />
+                <span className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400">Fabric Found</span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 overflow-y-auto p-4" style={{ maxHeight: 480 }}>
+              {!hasExtracted && <EmptyExtractionState />}
+
+              {hasExtracted && (
+                <>
+                  {/* Evidence strength card */}
+                  <div className={cn(
+                    "rounded-xl border p-3.5",
+                    extraction.evidenceLevel === "strong" && "border-emerald-200 bg-emerald-50",
+                    extraction.evidenceLevel === "medium" && "border-amber-200 bg-amber-50/60",
+                    extraction.evidenceLevel === "weak" && "border-red-200 bg-red-50/60",
+                  )}>
+                    <div className="flex items-start gap-2.5">
+                      <div className={cn(
+                        "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
+                        extraction.evidenceLevel === "strong" && "bg-emerald-500",
+                        extraction.evidenceLevel === "medium" && "bg-amber-400",
+                        extraction.evidenceLevel === "weak" && "bg-red-400",
+                      )}>
+                        {extraction.evidenceLevel === "strong"
+                          ? <CheckCircle2 className="h-3 w-3 text-white" />
+                          : <AlertTriangle className="h-3 w-3 text-white" />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className={cn(
+                          "text-xs font-semibold",
+                          extraction.evidenceLevel === "strong" && "text-emerald-800",
+                          extraction.evidenceLevel === "medium" && "text-amber-800",
+                          extraction.evidenceLevel === "weak" && "text-red-800",
+                        )}>
+                          {extraction.evidenceLevel === "strong" && "CFO-Ready · Fully validated metrics"}
+                          {extraction.evidenceLevel === "medium" && "Draft Case · Strong qualitative foundation"}
+                          {extraction.evidenceLevel === "weak" && "Speculative · Needs buyer confirmation"}
+                        </p>
+                        <p className={cn(
+                          "mt-0.5 text-[11px]",
+                          extraction.evidenceLevel === "medium" && "text-amber-700",
+                          extraction.evidenceLevel === "weak" && "text-red-700",
+                          extraction.evidenceLevel === "strong" && "text-emerald-700",
+                        )}>
+                          Evidence score: {extraction.evidenceScore}% · {extraction.missingMetrics.length > 0 ? `${extraction.missingMetrics.length} metric${extraction.missingMetrics.length > 1 ? "s" : ""} missing` : "All key parameters present"}
+                        </p>
+
+                        {/* Progress bar */}
+                        <div className="mt-2 h-1.5 w-full rounded-full bg-white/60 overflow-hidden">
+                          <div
+                            className={cn(
+                              "h-full rounded-full transition-all duration-500",
+                              extraction.evidenceLevel === "strong" && "bg-emerald-500",
+                              extraction.evidenceLevel === "medium" && "bg-amber-400",
+                              extraction.evidenceLevel === "weak" && "bg-red-400",
+                            )}
+                            style={{ width: `${extraction.evidenceScore}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Account & Deal */}
+                  {(extraction.companyName || extraction.arr) && (
+                    <SectionCard title="Account & Deal" icon={<Building2 className="h-3.5 w-3.5" />}>
+                      <div className="space-y-2">
+                        {extraction.companyName && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-zinc-500">Company</span>
+                            <span className="text-xs font-semibold text-zinc-800">{extraction.companyName}</span>
+                          </div>
+                        )}
+                        {extraction.domain && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-zinc-500">Domain</span>
+                            <span className="text-xs text-zinc-600">{extraction.domain}</span>
+                          </div>
+                        )}
+                        {extraction.industry && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-zinc-500">Industry</span>
+                            <span className="text-xs text-zinc-600">{extraction.industry}</span>
+                          </div>
+                        )}
+                        {extraction.arr !== null && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-zinc-500">Target ARR</span>
+                            <span className="flex items-center text-xs font-semibold text-zinc-800">
+                              ${extraction.arr.toLocaleString()}
+                              {extraction.arrInferred && <InferredBadge />}
+                            </span>
+                          </div>
+                        )}
+                        {extraction.buyingContext && (
+                          <div className="pt-1 border-t border-zinc-100">
+                            <p className="text-[11px] text-zinc-400">Buying context</p>
+                            <p className="mt-0.5 text-xs text-zinc-600">{extraction.buyingContext}</p>
+                          </div>
+                        )}
+                      </div>
+                    </SectionCard>
+                  )}
+
+                  {/* Pain points */}
+                  {extraction.painPoints.length > 0 && (
+                    <SectionCard title={`Business Pain · ${extraction.painPoints.length} detected`} icon={<TrendingDown className="h-3.5 w-3.5" />}>
+                      <div className="space-y-2">
+                        {extraction.painPoints.map((p) => (
+                          <div key={p.id} className="flex items-start gap-2">
+                            <ConfidenceDot value={p.confidence} />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs text-zinc-700">{p.description}</p>
+                              <span className="mt-0.5 inline-block rounded-md bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500">{p.lever}</span>
+                            </div>
+                            <span className="shrink-0 text-[10px] text-zinc-400">{Math.round(p.confidence * 100)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </SectionCard>
+                  )}
+
+                  {/* Stakeholders */}
+                  {extraction.stakeholders.length > 0 && (
+                    <SectionCard title={`Stakeholders · ${extraction.stakeholders.length} found`} icon={<Users className="h-3.5 w-3.5" />}>
+                      <div className="space-y-2">
+                        {extraction.stakeholders.map((s, i) => (
+                          <div key={i} className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-[10px] font-bold text-zinc-600">
+                                {s.name.charAt(0)}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium text-zinc-800">{s.name}</p>
+                                <p className="text-[10px] text-zinc-400 truncate">{s.title}</p>
+                              </div>
+                            </div>
+                            <span className={cn(
+                              "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+                              s.role === "Decision Maker" && "bg-zinc-900 text-white",
+                              s.role === "Champion" && "bg-blue-50 text-blue-700 border border-blue-200",
+                              s.role === "Evaluator" && "bg-zinc-100 text-zinc-600",
+                              s.role === "Compliance" && "bg-amber-50 text-amber-700 border border-amber-200",
+                              s.role === "Unknown" && "bg-zinc-100 text-zinc-500",
+                            )}>{s.role}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </SectionCard>
+                  )}
+
+                  {/* Missing metrics */}
+                  {extraction.missingMetrics.length > 0 && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/60">
+                      <div className="flex items-center gap-2 border-b border-amber-200/60 px-4 py-3">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Missing Baseline Metrics</span>
+                      </div>
+                      <div className="space-y-3 px-4 py-3">
+                        <p className="text-[11px] text-amber-700">To build a CFO-ready case, we need quantitative baseline inputs.</p>
+                        {extraction.missingMetrics.map((m) => (
+                          <div key={m.key}>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-medium text-zinc-600">{m.label}</label>
+                              {m.benchmarkLabel && <span className="text-[10px] text-zinc-400">{m.benchmarkLabel}</span>}
+                            </div>
+                            <input
+                              type="text"
+                              value={metricValues[m.key] ?? ""}
+                              onChange={(e) => setMetricValues((prev) => ({ ...prev, [m.key]: e.target.value }))}
+                              placeholder={m.placeholder}
+                              className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                            />
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Email draft */}
+                      {extraction.companyName && (
+                        <div className="border-t border-amber-200/60 px-4 pb-3 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowEmailDraft(!showEmailDraft)}
+                            className="flex items-center gap-1.5 text-[11px] font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                          >
+                            <Mail className="h-3.5 w-3.5" />
+                            {showEmailDraft ? "Hide email draft" : "Draft ask-client email"}
+                          </button>
+                          {showEmailDraft && emailDraft && (
+                            <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                              <pre className="whitespace-pre-wrap font-sans text-[11px] leading-relaxed text-blue-800">{emailDraft}</pre>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Strengthen success */}
+                  {strengthened && extraction.missingMetrics.length === 0 && (
+                    <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                      <p className="text-xs font-medium text-emerald-700">Benchmarks applied. Evidence strengthened.</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Footer ── */}
+        <div className="flex items-center justify-between gap-3 border-t border-zinc-100 bg-zinc-50/80 px-5 py-3">
+          <div className="flex items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onClick={() => dispatch({ type: "STRENGTHEN_PROMPT" })}
-                  className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30 dark:hover:text-blue-300"
+                  onClick={handleStrengthen}
+                  disabled={!hasExtracted}
+                  className="flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3.5 py-2 text-xs font-medium text-zinc-600 shadow-sm transition-all hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-800 disabled:pointer-events-none disabled:opacity-40"
                 >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Strengthen
+                  <Sparkles className="h-3.5 w-3.5 text-blue-500" />
+                  Strengthen Intake
                 </button>
               </TooltipTrigger>
-              <TooltipContent>Fill in missing value case sections</TooltipContent>
+              <TooltipContent>Apply industry benchmarks to fill missing metrics</TooltipContent>
             </Tooltip>
 
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onClick={() => dispatch({ type: "ENABLE_DEEP_RESEARCH" })}
-                  className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                  onClick={() => setMode("Deep")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-medium shadow-sm transition-all",
+                    mode === "Deep"
+                      ? "border-zinc-300 bg-zinc-900 text-white"
+                      : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-700"
+                  )}
                 >
                   <Zap className="h-3.5 w-3.5" />
-                  Deep research
+                  Deep Research
                 </button>
               </TooltipTrigger>
-              <TooltipContent>Enable deep research mode with full context</TooltipContent>
+              <TooltipContent>Enable comprehensive multi-source enrichment</TooltipContent>
             </Tooltip>
+
+            {hasExtracted && (
+              <div className="flex items-center gap-1.5 rounded-lg bg-zinc-100 px-2.5 py-1.5">
+                <div className={cn("h-1.5 w-1.5 rounded-full", extraction.evidenceLevel === "strong" ? "bg-emerald-500" : extraction.evidenceLevel === "medium" ? "bg-amber-400" : "bg-red-400")} />
+                <span className="text-[11px] font-medium text-zinc-500">
+                  {extraction.painPoints.length} pain{extraction.painPoints.length !== 1 ? "s" : ""} · {extraction.stakeholders.length} stakeholder{extraction.stakeholders.length !== 1 ? "s" : ""} detected
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* Right: submit */}
           <button
             type="button"
-            onClick={handleSubmit}
-            disabled={!canSubmit(state) || state.isSubmitting}
+            onClick={handleLaunch}
+            disabled={!canLaunch || isSubmitting}
             className={cn(
-              "flex h-8 items-center gap-1.5 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white shadow-sm transition-all",
-              "hover:bg-zinc-800 active:scale-[0.98]",
-              "dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200",
+              "flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all",
+              "bg-zinc-900 hover:bg-zinc-800 active:scale-[0.98]",
               "disabled:pointer-events-none disabled:opacity-40"
             )}
           >
-            {state.isSubmitting ? (
+            {isSubmitting ? (
               <>
-                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white dark:border-zinc-900/30 dark:border-t-zinc-900" />
-                Launching
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                Launching...
               </>
             ) : (
               <>
-                Launch
-                <ArrowRight className="h-3.5 w-3.5" />
+                Launch Case
+                <ArrowRight className="h-4 w-4" />
               </>
             )}
           </button>
