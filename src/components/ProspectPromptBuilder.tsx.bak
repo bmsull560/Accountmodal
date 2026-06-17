@@ -1,7 +1,22 @@
 import * as React from "react"
-import { ArrowRight, Briefcase, Building2, FileText, History, Mic, MicOff, Paperclip, Search, Settings2, Shield, Sparkles, Users, Wand as Wand2, Zap } from "lucide-react"
+import {
+  ArrowUp,
+  Briefcase,
+  Building2,
+  FileText,
+  History,
+  Mic,
+  Paperclip,
+  Search,
+  Settings2,
+  Shield,
+  Users,
+  Wand2,
+} from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Command,
   CommandEmpty,
@@ -189,17 +204,13 @@ const DEFAULT_ACTIVITIES: ActivityItem[] = [
   },
 ]
 
-const MODE_OPTIONS: { value: PromptMode; description: string }[] = [
-  { value: "Fast", description: "Quick, high-level overview" },
-  { value: "Balanced", description: "Balanced depth and speed" },
-  { value: "Deep", description: "Comprehensive analysis" },
-]
+const MODE_OPTIONS: PromptMode[] = ["Fast", "Balanced", "Deep"]
 
-const DELIVERABLE_OPTIONS: { label: string; value: DeliverableType; icon: React.ReactNode }[] = [
-  { label: "Account brief", value: "account_brief", icon: <FileText className="h-3.5 w-3.5" /> },
-  { label: "Discovery prep", value: "discovery_prep", icon: <Search className="h-3.5 w-3.5" /> },
-  { label: "Value hypotheses", value: "value_hypotheses", icon: <Sparkles className="h-3.5 w-3.5" /> },
-  { label: "Executive summary", value: "executive_summary", icon: <Briefcase className="h-3.5 w-3.5" /> },
+const DELIVERABLE_OPTIONS: { label: string; value: DeliverableType }[] = [
+  { label: "Account brief", value: "account_brief" },
+  { label: "Discovery prep", value: "discovery_prep" },
+  { label: "Value hypotheses", value: "value_hypotheses" },
+  { label: "Executive summary", value: "executive_summary" },
 ]
 
 const ENRICHMENT_OPTIONS: { label: string; value: EnrichmentDepth }[] = [
@@ -207,6 +218,15 @@ const ENRICHMENT_OPTIONS: { label: string; value: EnrichmentDepth }[] = [
   { label: "Standard", value: "standard" },
   { label: "Deep", value: "deep" },
 ]
+
+const S = {
+  pill: "h-10 rounded-2xl border border-border/60 bg-background px-4 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-foreground",
+  icon: "h-10 w-10 rounded-2xl border border-transparent bg-transparent text-muted-foreground shadow-none transition-all hover:border-border/60 hover:bg-muted hover:text-foreground hover:shadow-sm",
+  accentBtn: "gap-1.5 rounded-2xl border border-transparent bg-transparent text-blue-600 shadow-none transition-all hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:border-blue-500/40 dark:hover:bg-blue-500/10 dark:hover:text-blue-300",
+  option: "h-10 rounded-2xl border border-border/60 bg-background px-3 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-foreground",
+  primary: "h-10 rounded-2xl bg-foreground px-5 text-sm font-medium text-background shadow-sm transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-50",
+  badge: "rounded-xl border border-border/60 bg-muted/40 px-2.5 py-1 text-xs font-medium",
+} as const
 
 const CORE_SECTIONS: SectionKey[] = ["company", "buyingContext", "stakeholders", "businessPain", "deliverable"]
 
@@ -256,6 +276,7 @@ function bulletSection(title: string, items: string[], placeholder = "") {
 
 function serializeDraft(draft: ProspectSetupDraft, vis: Record<SectionKey, boolean>, primary: DeliverableType) {
   const parts: string[] = []
+
   if (vis.company || hasContent(draft.companyName) || hasContent(draft.companyDomain) || hasContent(draft.industry)) {
     parts.push([`Company: ${draft.companyName}`, `Website: ${draft.companyDomain}`, `Industry: ${draft.industry}`].join("\n"))
   }
@@ -382,7 +403,7 @@ function flagLabel(key: "useUploadedFiles" | "usePriorAccountContext" | "runWebE
 }
 
 function sectionTitle(s: SectionKey) {
-  const map: Record<SectionKey, string> = { company: "Company", buyingContext: "Buying context", stakeholders: "Stakeholders", businessPain: "Business pain", deliverable: "Deliverable", compliance: "Compliance", researchFocus: "Research focus", notes: "Notes" }
+  const map: Record<SectionKey, string> = { company: "Company details", buyingContext: "Buying context", stakeholders: "Stakeholders", businessPain: "Business pain", deliverable: "Deliverable", compliance: "Compliance sensitivity", researchFocus: "Research focus", notes: "Additional notes" }
   return map[s] ?? s
 }
 
@@ -506,31 +527,10 @@ function resolveAccountId(result: CreateSetupResult, company?: CompanyOption) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-const ToolbarIconButton = React.forwardRef<
-  HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean; activeClass?: string }
->(({ className, active, activeClass, children, ...props }, ref) => (
-  <button
-    ref={ref}
-    type="button"
-    className={cn(
-      "flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors",
-      "hover:bg-zinc-100 hover:text-zinc-700",
-      "dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-300",
-      active && activeClass,
-      className
-    )}
-    {...props}
-  >
-    {children}
-  </button>
-))
-ToolbarIconButton.displayName = "ToolbarIconButton"
-
 const SettingsSwitch = React.memo(function SettingsSwitch({ id, label, checked, onCheckedChange }: { id: string; label: string; checked: boolean; onCheckedChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-0.5">
-      <Label htmlFor={id} className="cursor-pointer select-none text-sm font-normal text-zinc-600 dark:text-zinc-400">{label}</Label>
+    <div className="flex items-center justify-between gap-3">
+      <Label htmlFor={id} className="cursor-pointer select-none text-sm font-normal">{label}</Label>
       <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
     </div>
   )
@@ -542,62 +542,39 @@ const PromptSettingsPopover = React.memo(function PromptSettingsPopover({ state,
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <ToolbarIconButton aria-label="Analysis settings">
+            <Button type="button" variant="ghost" size="icon" className={cn(S.icon, "hover:bg-muted/80")} aria-label="Prompt settings">
               <Settings2 className="h-4 w-4" />
-            </ToolbarIconButton>
+            </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>Analysis settings</TooltipContent>
+        <TooltipContent className="rounded-lg">Open analysis settings</TooltipContent>
       </Tooltip>
-      <PopoverContent align="end" sideOffset={8} className="w-80 rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-900">
-        <div className="flex flex-col gap-5">
-          <div className="space-y-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">Deliverable</p>
-            <div className="grid grid-cols-2 gap-1.5">
+      <PopoverContent align="end" className="w-80 rounded-2xl border border-border/60 bg-popover p-4 shadow-lg">
+        <div className="flex flex-col gap-4">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Deliverable</p>
+            <div className="grid grid-cols-2 gap-2">
               {DELIVERABLE_OPTIONS.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  onClick={() => dispatch({ type: "SET_PRIMARY_DELIVERABLE", deliverable: o.value })}
-                  className={cn(
-                    "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-all",
-                    state.primaryDeliverable === o.value
-                      ? "border-zinc-300 bg-zinc-100 font-medium text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-                      : "border-zinc-200 text-zinc-500 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-800 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-200"
-                  )}
-                >
-                  <span className={cn(state.primaryDeliverable === o.value ? "text-zinc-500 dark:text-zinc-400" : "text-zinc-400 dark:text-zinc-500")}>{o.icon}</span>
+                <Button key={o.value} type="button" variant="outline" onClick={() => dispatch({ type: "SET_PRIMARY_DELIVERABLE", deliverable: o.value })}
+                  className={cn(S.option, "justify-start text-left", state.primaryDeliverable === o.value && "border-foreground bg-accent text-foreground")}>
                   {o.label}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
-
           <Separator />
-
-          <div className="space-y-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">Enrichment depth</p>
-            <div className="flex rounded-xl border border-zinc-200 bg-zinc-50 p-1 gap-1 dark:border-zinc-700 dark:bg-zinc-800/50">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Enrichment depth</p>
+            <div className="grid grid-cols-3 gap-2">
               {ENRICHMENT_OPTIONS.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  onClick={() => dispatch({ type: "SET_ENRICHMENT_DEPTH", enrichmentDepth: o.value })}
-                  className={cn(
-                    "flex-1 rounded-lg py-1.5 text-sm font-medium transition-all",
-                    state.enrichmentDepth === o.value
-                      ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-100"
-                      : "text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
-                  )}
-                >
+                <Button key={o.value} type="button" variant="outline" onClick={() => dispatch({ type: "SET_ENRICHMENT_DEPTH", enrichmentDepth: o.value })}
+                  className={cn(S.option, state.enrichmentDepth === o.value && "border-foreground bg-accent text-foreground")}>
                   {o.label}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
-
           <Separator />
-
           <div className="space-y-3">
             <SettingsSwitch id="uploaded-files" label="Use uploaded files" checked={state.useUploadedFiles} onCheckedChange={(v) => dispatch({ type: "SET_FLAG", key: "useUploadedFiles", value: v })} />
             <SettingsSwitch id="prior-context" label="Use prior account context" checked={state.usePriorAccountContext} onCheckedChange={(v) => dispatch({ type: "SET_FLAG", key: "usePriorAccountContext", value: v })} />
@@ -616,26 +593,72 @@ const RecentActivityMenu = React.memo(function RecentActivityMenu({ activities, 
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
-            <ToolbarIconButton aria-label="Recent value cases">
+            <Button type="button" variant="ghost" size="icon" className={cn(S.icon, "hover:bg-muted/80")} aria-label="Recent value cases">
               <History className="h-4 w-4" />
-            </ToolbarIconButton>
+            </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent>Recent value cases</TooltipContent>
+        <TooltipContent className="rounded-lg">Open recent value cases</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="end" sideOffset={8} className="w-80 rounded-2xl border border-zinc-200/80 bg-white p-1.5 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-900">
-        <DropdownMenuLabel className="px-3 py-2 text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
-          Recent value cases
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator className="mx-1 bg-zinc-100 dark:bg-zinc-800" />
+      <DropdownMenuContent align="end" className="w-80 rounded-2xl border border-border/60 bg-popover p-1 shadow-lg">
+        <DropdownMenuLabel className="text-xs uppercase tracking-wide text-muted-foreground">Recent value cases</DropdownMenuLabel>
+        <DropdownMenuSeparator />
         {activities.map((a) => (
-          <DropdownMenuItem key={a.id} onClick={() => onRestore(a)} className="flex flex-col items-start gap-0.5 rounded-xl px-3 py-2.5 cursor-pointer">
-            <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{a.title}</span>
-            <span className="text-xs text-zinc-400 dark:text-zinc-500">{a.updatedAt}</span>
+          <DropdownMenuItem key={a.id} onClick={() => onRestore(a)} className="flex flex-col items-start gap-0.5 rounded-xl px-3 py-2.5">
+            <span className="text-sm font-medium">{a.title}</span>
+            <span className="text-xs text-muted-foreground">{a.updatedAt}</span>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+})
+
+const StatusBanner = React.memo(function StatusBanner({ successMessage, statusMessage, errorMessage }: Pick<BuilderState, "successMessage" | "statusMessage" | "errorMessage">) {
+  if (!successMessage && !statusMessage && !errorMessage) return null
+  const tone = errorMessage ? "error" : successMessage ? "success" : "info"
+  const msg = errorMessage || successMessage || statusMessage
+  return (
+    <div className={cn("mx-2 rounded-xl px-3 py-2 text-sm transition-all",
+      tone === "error" && "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400",
+      tone === "success" && "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400",
+      tone === "info" && "bg-muted/60 text-muted-foreground")}>
+      {msg}
+    </div>
+  )
+})
+
+const PromptHeader = React.memo(function PromptHeader({ mode, onModeChange, state, dispatch, recentActivities }: { mode: PromptMode; onModeChange: (m: PromptMode) => void; state: BuilderState; dispatch: React.Dispatch<BuilderAction>; recentActivities: ActivityItem[] }) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" size="sm" className={S.pill}>{mode}</Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent className="rounded-lg">Choose analysis depth</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="start" className="rounded-2xl border border-border/60 bg-popover p-1 shadow-lg">
+            <DropdownMenuLabel className="text-xs uppercase tracking-wide text-muted-foreground">Analysis depth</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {MODE_OPTIONS.map((o) => (
+              <DropdownMenuItem key={o} onClick={() => onModeChange(o)} className="rounded-xl">{o}</DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Badge variant="secondary" className="h-10 rounded-2xl border border-border/60 bg-muted/60 px-4 text-sm font-medium text-foreground shadow-sm">
+          <Wand2 className="mr-1.5 h-3.5 w-3.5" />
+          New Value Case
+        </Badge>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <PromptSettingsPopover state={state} dispatch={dispatch} />
+        <RecentActivityMenu activities={recentActivities} onRestore={(a) => dispatch({ type: "RESTORE_ACTIVITY", activity: a })} />
+      </div>
+    </div>
   )
 })
 
@@ -645,23 +668,23 @@ const CompanySearchPopover = React.memo(function CompanySearchPopover({ open, on
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <ToolbarIconButton aria-label="Search accounts">
+            <Button type="button" variant="ghost" size="icon" className={S.icon} aria-label="Search accounts">
               <Search className="h-4 w-4" />
-            </ToolbarIconButton>
+            </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>Search accounts</TooltipContent>
+        <TooltipContent className="rounded-lg">Search accounts</TooltipContent>
       </Tooltip>
-      <PopoverContent align="start" side="top" sideOffset={8} className="w-72 rounded-2xl border border-zinc-200/80 bg-white p-0 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-900">
-        <Command className="rounded-2xl bg-transparent">
-          <CommandInput placeholder="Search accounts..." className="h-10 rounded-t-2xl border-0 bg-transparent" />
+      <PopoverContent align="start" side="top" className="w-72 rounded-2xl border border-border/60 bg-popover p-0 shadow-lg">
+        <Command className="rounded-2xl">
+          <CommandInput placeholder="Search accounts..." className="h-10 rounded-t-2xl" />
           <CommandList className="max-h-56">
-            <CommandEmpty className="py-4 text-center text-sm text-zinc-400 dark:text-zinc-500">No accounts found.</CommandEmpty>
-            <CommandSeparator className="bg-zinc-100 dark:bg-zinc-800" />
+            <CommandEmpty className="py-4 text-center text-sm text-muted-foreground">No accounts found.</CommandEmpty>
+            <CommandSeparator />
             {companyOptions.map((c) => (
-              <CommandItem key={c.id} value={c.name} onSelect={() => onSelect(c)} className="flex flex-col items-start gap-0.5 rounded-xl px-3 py-2.5 cursor-pointer">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">{c.name}</span>
-                {c.industry && <span className="text-xs text-zinc-400 dark:text-zinc-500">{c.industry}</span>}
+              <CommandItem key={c.id} value={c.name} onSelect={() => onSelect(c)} className="flex flex-col items-start gap-0.5 rounded-xl px-3 py-2.5">
+                <span className="font-medium">{c.name}</span>
+                {c.industry && <span className="text-xs text-muted-foreground">{c.industry}</span>}
               </CommandItem>
             ))}
           </CommandList>
@@ -672,18 +695,125 @@ const CompanySearchPopover = React.memo(function CompanySearchPopover({ open, on
 })
 
 const SectionIcon = ({ section }: { section: SectionKey }) => {
-  const cls = "h-3 w-3"
   switch (section) {
-    case "company": return <Building2 className={cls} />
-    case "buyingContext": return <Briefcase className={cls} />
-    case "stakeholders": return <Users className={cls} />
-    case "businessPain": return <FileText className={cls} />
-    case "deliverable": return <Sparkles className={cls} />
-    case "compliance": return <Shield className={cls} />
-    case "researchFocus": return <Search className={cls} />
-    case "notes": return <FileText className={cls} />
+    case "company": return <Building2 className="h-3.5 w-3.5" />
+    case "buyingContext": return <Briefcase className="h-3.5 w-3.5" />
+    case "stakeholders": return <Users className="h-3.5 w-3.5" />
+    case "businessPain": return <FileText className="h-3.5 w-3.5" />
+    case "deliverable": return <Wand2 className="h-3.5 w-3.5" />
+    case "compliance": return <Shield className="h-3.5 w-3.5" />
+    case "researchFocus": return <Search className="h-3.5 w-3.5" />
+    case "notes": return <FileText className="h-3.5 w-3.5" />
   }
 }
+
+const ContextChips = React.memo(function ContextChips({ state, dispatch }: { state: BuilderState; dispatch: React.Dispatch<BuilderAction> }) {
+  const hidden = (Object.keys(state.visibleSections) as SectionKey[]).filter((k) => !state.visibleSections[k])
+  if (hidden.length === 0) return null
+  return (
+    <div className="flex flex-wrap gap-2 px-2">
+      {hidden.map((section) => (
+        <Button key={section} type="button" variant="outline" size="sm" onClick={() => dispatch({ type: "ENABLE_SECTION", section })}
+          className="h-8 gap-1.5 rounded-xl border border-dashed border-border/60 bg-transparent px-3 text-xs font-medium text-muted-foreground shadow-none transition-all hover:border-border hover:bg-muted/40 hover:text-foreground">
+          <SectionIcon section={section} />
+          + {sectionTitle(section)}
+        </Button>
+      ))}
+    </div>
+  )
+})
+
+const AttachmentPills = React.memo(function AttachmentPills({ attachments }: { attachments: AttachmentItem[] }) {
+  if (attachments.length === 0) return null
+  return (
+    <div className="flex flex-wrap gap-1.5 px-2">
+      {attachments.map((a) => (
+        <span key={a.id} className={cn(S.badge, "flex items-center gap-1")}>
+          <Paperclip className="h-3 w-3" />{a.name}
+        </span>
+      ))}
+    </div>
+  )
+})
+
+const PromptFooter = React.memo(function PromptFooter({ state, dispatch, companyOptions, onAttachContent, onOpenVoiceInput, onSubmit }: { state: BuilderState; dispatch: React.Dispatch<BuilderAction>; companyOptions: CompanyOption[]; onAttachContent?: () => AttachResult | Promise<AttachResult>; onOpenVoiceInput?: () => void; onSubmit: () => void }) {
+  const handleAttach = async () => {
+    const result = onAttachContent ? await onAttachContent() : null
+    const items: AttachmentItem[] = result
+      ? Array.isArray(result) ? result : [result]
+      : [{ id: `attachment-${state.attachments.length + 1}`, name: `Attachment ${state.attachments.length + 1}` }]
+    dispatch({ type: "ATTACHMENTS_ADDED", attachments: items })
+  }
+
+  const handleVoice = () => {
+    onOpenVoiceInput?.()
+    dispatch({ type: "SET_RECORDING", value: !state.isRecording })
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2 px-2">
+      <div className="flex items-center gap-1">
+        <CompanySearchPopover open={state.searchOpen} onOpenChange={(o) => dispatch({ type: "SET_SEARCH_OPEN", open: o })} companyOptions={companyOptions} onSelect={(c) => dispatch({ type: "SELECT_COMPANY", company: c })} />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" onClick={handleAttach} className={S.icon} aria-label="Attach content">
+              <Paperclip className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="rounded-lg">Attach files or content</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" onClick={handleVoice}
+              className={cn(S.icon, state.isRecording && "border-red-300 bg-red-50 text-red-600 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-400")}
+              aria-label="Voice input">
+              <Mic className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="rounded-lg">{state.isRecording ? "Stop recording" : "Start voice input"}</TooltipContent>
+        </Tooltip>
+
+        <Separator orientation="vertical" className="mx-1 h-5" />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" onClick={() => dispatch({ type: "STRENGTHEN_PROMPT" })} className={cn(S.accentBtn, "h-9 px-3 text-xs")}>
+              <Wand2 className="h-3.5 w-3.5" />
+              Strengthen
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="rounded-lg">Add missing value case sections</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" onClick={() => dispatch({ type: "ENABLE_DEEP_RESEARCH" })} className={cn(S.accentBtn, "h-9 px-3 text-xs")}>
+              <Search className="h-3.5 w-3.5" />
+              Deep research
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className="rounded-lg">Enable deep research mode</TooltipContent>
+        </Tooltip>
+      </div>
+
+      <Button type="button" onClick={onSubmit} disabled={!canSubmit(state) || state.isSubmitting} className={S.primary}>
+        {state.isSubmitting ? (
+          <span className="flex items-center gap-2">
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background border-t-transparent" />
+            Launching...
+          </span>
+        ) : (
+          <span className="flex items-center gap-2">
+            Launch
+            <ArrowUp className="h-3.5 w-3.5" />
+          </span>
+        )}
+      </Button>
+    </div>
+  )
+})
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
@@ -729,232 +859,37 @@ export function ProspectPromptBuilder({
     }
   }, [state, onCreateSetup, onNavigateToWorkspace])
 
-  const handleAttach = async () => {
-    const result = onAttachContent ? await onAttachContent() : null
-    const items: AttachmentItem[] = result
-      ? Array.isArray(result) ? result : [result]
-      : [{ id: `attachment-${state.attachments.length + 1}`, name: `Attachment ${state.attachments.length + 1}` }]
-    dispatch({ type: "ATTACHMENTS_ADDED", attachments: items })
-  }
-
-  const handleVoice = () => {
-    onOpenVoiceInput?.()
-    dispatch({ type: "SET_RECORDING", value: !state.isRecording })
-  }
-
-  const hiddenSections = (Object.keys(state.visibleSections) as SectionKey[]).filter((k) => !state.visibleSections[k])
-  const hasStatus = Boolean(state.statusMessage || state.successMessage || state.errorMessage)
-  const statusTone = state.errorMessage ? "error" : state.successMessage ? "success" : "info"
-  const statusMsg = state.errorMessage || state.successMessage || state.statusMessage
-
   return (
-    <TooltipProvider delayDuration={250}>
-      <div className={cn(
-        "w-full overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-lg",
-        "dark:border-zinc-700/60 dark:bg-zinc-900",
-        className
-      )}>
+    <TooltipProvider delayDuration={300}>
+      <div className={cn("flex w-full flex-col gap-3 rounded-3xl border border-border/60 bg-background p-4 shadow-sm", className)}>
+        <PromptHeader mode={state.mode} onModeChange={(m) => dispatch({ type: "SET_MODE", mode: m })} state={state} dispatch={dispatch} recentActivities={recentActivities} />
 
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between gap-3 border-b border-zinc-100 bg-zinc-50/80 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-800/40">
-          <div className="flex items-center gap-3">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-200/80 dark:bg-zinc-700">
-              <Wand2 className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
+        <div className="relative flex flex-col gap-1 px-2">
+          {state.selectedCompany && (
+            <div className="mb-1 flex items-center gap-1.5">
+              <span className="flex items-center gap-1 rounded-lg border border-border/60 bg-muted/40 px-2 py-0.5 text-xs font-medium text-foreground">
+                <Building2 className="h-3 w-3 text-muted-foreground" />
+                {state.selectedCompany.name}
+                {state.selectedCompany.industry && <span className="text-muted-foreground"> · {state.selectedCompany.industry}</span>}
+              </span>
             </div>
-            <div>
-              <p className="text-[13px] font-semibold leading-tight text-zinc-800 dark:text-zinc-200">New Value Case</p>
-              <p className="text-[11px] leading-tight text-zinc-400 dark:text-zinc-500">Prospect intelligence builder</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Mode segmented control */}
-            <div className="flex items-center gap-0.5 rounded-xl border border-zinc-200 bg-white p-0.5 dark:border-zinc-700 dark:bg-zinc-900">
-              {MODE_OPTIONS.map((o) => (
-                <Tooltip key={o.value}>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => dispatch({ type: "SET_MODE", mode: o.value })}
-                      className={cn(
-                        "rounded-lg px-3 py-1 text-xs font-medium transition-all",
-                        state.mode === o.value
-                          ? "bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900"
-                          : "text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
-                      )}
-                    >
-                      {o.value}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>{o.description}</TooltipContent>
-                </Tooltip>
-              ))}
-            </div>
-
-            <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-700" />
-            <PromptSettingsPopover state={state} dispatch={dispatch} />
-            <RecentActivityMenu activities={recentActivities} onRestore={(a) => dispatch({ type: "RESTORE_ACTIVITY", activity: a })} />
-          </div>
-        </div>
-
-        {/* ── Company band ── */}
-        {state.selectedCompany && (
-          <div className="flex items-center gap-2.5 border-b border-blue-100 bg-blue-50/60 px-4 py-2.5 dark:border-blue-900/30 dark:bg-blue-950/20">
-            <Building2 className="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
-            <span className="text-sm font-semibold text-blue-800 dark:text-blue-300">{state.selectedCompany.name}</span>
-            {state.selectedCompany.industry && (
-              <span className="text-sm text-blue-500/80 dark:text-blue-400/60">· {state.selectedCompany.industry}</span>
-            )}
-            {state.selectedCompany.domain && (
-              <span className="ml-auto text-xs text-blue-400/70 dark:text-blue-500/60">{state.selectedCompany.domain}</span>
-            )}
-          </div>
-        )}
-
-        {/* ── Textarea ── */}
-        <div className="px-4 pt-4 pb-2">
+          )}
           <Textarea
             value={state.promptText}
             onChange={(e) => dispatch({ type: "APPLY_PROMPT_TEXT", promptText: e.target.value })}
             placeholder="Describe the account, buying context, pain points, and desired outcome — or use the controls below to build your value case..."
-            className="min-h-[176px] w-full resize-none border-0 bg-transparent p-0 text-sm leading-relaxed text-zinc-800 placeholder:text-zinc-300 focus-visible:ring-0 focus-visible:ring-offset-0 dark:text-zinc-200 dark:placeholder:text-zinc-600"
+            className="min-h-[160px] resize-none rounded-2xl border-0 bg-transparent p-0 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/60 focus-visible:ring-0 focus-visible:ring-offset-0"
             aria-label="Prompt input"
           />
         </div>
 
-        {/* ── Attachments ── */}
-        {state.attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-4 pb-3">
-            {state.attachments.map((a) => (
-              <span key={a.id} className="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
-                <Paperclip className="h-3 w-3 text-zinc-400" />
-                {a.name}
-              </span>
-            ))}
-          </div>
-        )}
+        <AttachmentPills attachments={state.attachments} />
+        <ContextChips state={state} dispatch={dispatch} />
+        <StatusBanner successMessage={state.successMessage} statusMessage={state.statusMessage} errorMessage={state.errorMessage} />
 
-        {/* ── Context chips ── */}
-        {hiddenSections.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3">
-            <span className="text-[11px] font-medium text-zinc-300 dark:text-zinc-600 mr-0.5">Add context:</span>
-            {hiddenSections.map((section) => (
-              <button
-                key={section}
-                type="button"
-                onClick={() => dispatch({ type: "ENABLE_SECTION", section })}
-                className="flex items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 bg-transparent px-2.5 py-1 text-[12px] font-medium text-zinc-400 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-600 dark:border-zinc-700 dark:text-zinc-500 dark:hover:border-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
-              >
-                <SectionIcon section={section} />
-                {sectionTitle(section)}
-              </button>
-            ))}
-          </div>
-        )}
+        <Separator className="mx-2" />
 
-        {/* ── Status banner ── */}
-        {hasStatus && (
-          <div className={cn(
-            "mx-4 mb-3 rounded-xl px-3.5 py-2.5 text-sm",
-            statusTone === "error" && "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400",
-            statusTone === "success" && "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400",
-            statusTone === "info" && "bg-zinc-50 text-zinc-500 dark:bg-zinc-800/60 dark:text-zinc-400"
-          )}>
-            {statusMsg}
-          </div>
-        )}
-
-        {/* ── Footer toolbar ── */}
-        <div className="flex items-center justify-between gap-2 border-t border-zinc-100 bg-zinc-50/80 px-3 py-2.5 dark:border-zinc-800 dark:bg-zinc-800/40">
-
-          {/* Left: input actions */}
-          <div className="flex items-center gap-0.5">
-            <CompanySearchPopover
-              open={state.searchOpen}
-              onOpenChange={(o) => dispatch({ type: "SET_SEARCH_OPEN", open: o })}
-              companyOptions={companyOptions}
-              onSelect={(c) => dispatch({ type: "SELECT_COMPANY", company: c })}
-            />
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <ToolbarIconButton onClick={handleAttach} aria-label="Attach content">
-                  <Paperclip className="h-4 w-4" />
-                </ToolbarIconButton>
-              </TooltipTrigger>
-              <TooltipContent>Attach files or content</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <ToolbarIconButton
-                  onClick={handleVoice}
-                  active={state.isRecording}
-                  activeClass="bg-red-50 text-red-500 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-900/30"
-                  aria-label={state.isRecording ? "Stop recording" : "Start voice input"}
-                >
-                  {state.isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                </ToolbarIconButton>
-              </TooltipTrigger>
-              <TooltipContent>{state.isRecording ? "Stop recording" : "Start voice input"}</TooltipContent>
-            </Tooltip>
-
-            <div className="mx-1.5 h-4 w-px bg-zinc-200 dark:bg-zinc-700" />
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => dispatch({ type: "STRENGTHEN_PROMPT" })}
-                  className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30 dark:hover:text-blue-300"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Strengthen
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Fill in missing value case sections</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => dispatch({ type: "ENABLE_DEEP_RESEARCH" })}
-                  className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-                >
-                  <Zap className="h-3.5 w-3.5" />
-                  Deep research
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Enable deep research mode with full context</TooltipContent>
-            </Tooltip>
-          </div>
-
-          {/* Right: submit */}
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!canSubmit(state) || state.isSubmitting}
-            className={cn(
-              "flex h-8 items-center gap-1.5 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white shadow-sm transition-all",
-              "hover:bg-zinc-800 active:scale-[0.98]",
-              "dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200",
-              "disabled:pointer-events-none disabled:opacity-40"
-            )}
-          >
-            {state.isSubmitting ? (
-              <>
-                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white dark:border-zinc-900/30 dark:border-t-zinc-900" />
-                Launching
-              </>
-            ) : (
-              <>
-                Launch
-                <ArrowRight className="h-3.5 w-3.5" />
-              </>
-            )}
-          </button>
-        </div>
+        <PromptFooter state={state} dispatch={dispatch} companyOptions={companyOptions} onAttachContent={onAttachContent} onOpenVoiceInput={onOpenVoiceInput} onSubmit={handleSubmit} />
       </div>
     </TooltipProvider>
   )
